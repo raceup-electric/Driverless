@@ -1,0 +1,6 @@
+Il problema è che non riesce a leggere nel formato che vuole
+lui alcuni messaggi custom UFS (alcune volte li legge come array
+numerici vuoti). Anche provando a dirgli di non leggere
+questi messaggi non funziona perchè sembra che il programma scriva un file csv per ogni topic e poi li unisce, appena si accorge che manca
+il file di un certo topic da errore. Quindi bisogna capire come far leggere 
+quei messaggi a message_converter.py
