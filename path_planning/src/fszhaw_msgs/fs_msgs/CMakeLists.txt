@@ -18,6 +18,7 @@ set(msg_files
   msg/Track.msg
   msg/Cone.msg
   msg/ExtraInfo.msg
+  msg/ConeArrayWithCovariance.msg
 )
 
 set(srv_files

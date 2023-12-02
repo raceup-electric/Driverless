@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import rclpy
 from fs_msgs.msg import Cone
 from fszhaw_msgs.msg import CurrentPosition, PlannedTrajectory
+from fs_msgs.msg import ConeArrayWithCovariance
 from interfaces.srv import OptimizePath
 from rclpy.node import Node
 from scipy.spatial.distance import cdist
@@ -83,12 +84,25 @@ class PathPlanner(Node):
         self.__set_track_config(self.track_name)
 
         # initialize cone subscriber
-        self.cone_subscription = self.create_subscription(
+        
+        # IF TESTING
+        if SHOW_PLOT_EXPLORATION == False:
+            
+            self.cone_subscription = self.create_subscription(
+                Cone,
+                'cone_pose',
+                self.__cone_listener_callback,
+                200)
+        else:
+            self.cone_subscription = self.create_subscription(
             Cone,
             'cone',
             self.__cone_listener_callback,
             200)
         self.cone_subscription  # prevent unused variable warning
+        
+        
+        #IF PRODUCTION 
 
         # initialize Current Position subscriber
         self.current_position_subscription = self.create_subscription(
@@ -212,10 +226,15 @@ class PathPlanner(Node):
         """
         logging.debug(
             f'Current Position: {self.current_position.vehicle_position_x} {self.current_position.vehicle_position_y}\n\
-                Next Cone: Tag={next_cone.color}, Coordinates=({next_cone.location.x}, {next_cone.location.y})')
+                Next Cone: Tag={next_cone.color}, Coordinates=({next_cone.location.x}, {next_cone.location.y})') # change format to next_cone.blue_cones.point.x
 
         # add next cone to its corresponding list regarding it's color
-        self.__add_to_received_cones(next_cone)
+        
+        if SHOW_PLOT_EXPLORATION == False:
+
+            self.__add_to_received_cones(next_cone)
+        
+            
 
         # handle start finish detection
         start_finish_detected = False
@@ -428,3 +447,4 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
+
