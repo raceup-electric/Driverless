@@ -1,0 +1,3 @@
+[submodule "src/fszhaw_msgs"]
+	path = src/fszhaw_msgs
+	url = https://github.com/Beomar97/ros-msgs
