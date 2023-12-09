@@ -20,6 +20,8 @@ set(msg_files
   msg/ExtraInfo.msg
   msg/CurrentPosition.msg
   msg/PlannedTrajectory.msg
+  msg/ConeArrayWithCovariance.msg
+  msg/ConeWithCovariance.msg
 )
 
 set(srv_files
