@@ -58,4 +58,19 @@ SETUP INFORMATION
 	source install/setup.bash
 
 9. Run package
-	ros2 launch launch/path_planning_launch.py <parameter_name>:=<parameter_value>
+	ros2 launch launch/path_planning_launch_test.py <parameter_name>:=<parameter_value>
+
+
+-------------------------------------------------------------------------------------------------
+QUICK SETUP	
+a) First Run
+sudo apt install python3-pip python3-rosdep2 python3-colcon-common-extensions python3-pip
+rosdep update
+source /opt/ros/foxy/setup.bash
+rosdep install -i --from-path src --rosdistro foxy -y
+pip3 install trajectory_planning_helpers==0.76
+
+b) Second Run
+colcon build
+ros2 launch launch/path_planning_launch_test.py
+
