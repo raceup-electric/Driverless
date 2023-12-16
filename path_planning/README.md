@@ -74,3 +74,31 @@ b) Second Run
 colcon build
 ros2 launch launch/path_planning_launch_test.py
 
+
+-------------------------------------------------------------------------------
+LIST OF SUBSCRIPTIONS/PUBLISHER (draft)
+-------------------------------------------------------------------------------
+
+path_planner.py
+	s- Cone
+	s- CurrentPosition
+	p- PlannedTrajectory
+
+-------------------------------------------------------------------------------
+USAGE OF MESSAGES (draft)
+-------------------------------------------------------------------------------
+
+planned_path_filter.py
+	- CurrentPosition
+	
+start_finish_detector.py
+	- Cone
+	- CurrentPosition
+
+track_config.py
+	- CurrentPosition
+
+exploration.py
+	- Cone
+	- CurrentPosition
+
