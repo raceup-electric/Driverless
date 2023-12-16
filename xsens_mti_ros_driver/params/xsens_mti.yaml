@@ -1,0 +1,6 @@
+xsens_mti:
+  ros__parameters:
+    sample_frequency: 100 # [Hz]
+    calibrated: True # Use calibrated IMU data with factory calibration
+    low_latency_serial: True # Acquire (and timestamp) as soon as a new packet is available
+    sched_priority: 99 # Real-time priority assigned to the process.
