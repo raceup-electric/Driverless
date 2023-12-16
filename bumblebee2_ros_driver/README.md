@@ -22,7 +22,7 @@ test_bumblebee2 subscribe to StereoImage topic and read the data using custom ms
 - 2) from the main directory of the WS,you have to use this command: "ros2 run bumblebee2_ros_driver test_bumblebee2".
 - 3) if all works properly now you should see two windows (one for camera) with the image.
 
-## HOW TO COCCELT DATA FOR ROSBAG USING BUMBLEBEE2
+## HOW TO COLLECT DATA FOR ROSBAG USING BUMBLEBEE2
 
 bumblebee2 publish StereoImage topic and using custom msgs(all the message used are from ufs_msgs).
 
