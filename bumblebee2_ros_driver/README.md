@@ -2,11 +2,11 @@
 
 ## HOW TO INSTALL
 - 1) pull the directory in your eufs_WS main directory.
-- 3) source the WS using "source/install.bash" (everytime you open a new terminal remember to source).
+- 2) source the WS using "source/install.bash" (everytime you open a new terminal remember to source).
 
-- 2) use the command "colcon build" to build the package.
-- 3) if there are some errors try to resolve it, if the problem is that a package is unable to find use: "sudo apt install <package name>" or "sudo apt install ros-foxy<package name>" (all the (underline)_ have to be changed in (dash)-).
-- 3b) if the build continue to fail, make sure that the followin line of the graph_base_slam/CMakeList.txt are commented:
+- 3) use the command "colcon build" to build the package.
+- 4) if there are some errors try to resolve it, if the problem is that a package is unable to find use: "sudo apt install <package name>" or "sudo apt install ros-foxy<package name>" (all the (underline)_ have to be changed in (dash)-).
+- 4b) if the build continue to fail, make sure that the followin line of the graph_base_slam/CMakeList.txt are commented:
   - line 43 "link_directories(${G2O_LIBRARY_DIRS})".
   - line 55 "find dependencies".
   - line 65 "ind_package(g2o REQUIRED)".
