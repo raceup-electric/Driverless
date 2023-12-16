@@ -1,6 +1,6 @@
-#HOW BUMBLEBEE WORK
+# HOW BUMBLEBEE WORK
 
-##HOW TO INSTALL
+## HOW TO INSTALL
 1)pull the directory in your eufs_WS main directory.
 3)source the WS using "source/install.bash" (everytime you open a new terminal remember to source).
 2)use the command "colcon build" to build the package.
@@ -13,7 +13,7 @@
 -line 131 "target_link_libraries(ks_kinematics g2o::core g2o::types_slam2d g2o::solver_eigen)".
 line 310 "ament_export_include_directories("~/Documenti/thesis/FSD_SLAM_navigation/eufs_sim_folder/src/slam_module/src/graph_based_slam/DeepNetPorting/include/")".
 
-##HOW TO READ DATA FROM ROSBAG USING BUMBLEBEE2
+## HOW TO READ DATA FROM ROSBAG USING BUMBLEBEE2
 
 test_bumblebee2 subscribe to StereoImage topic and read the data using custom msgs(all the message used are from ufs_msgs).
 
@@ -21,7 +21,7 @@ test_bumblebee2 subscribe to StereoImage topic and read the data using custom ms
 2)from the main directory of the WS,you have to use this command: "ros2 run bumblebee2_ros_driver test_bumblebee2".
 3)if all works properly now you should see two windows (one for camera) with the image.
 
-##HOW TO COCCELT DATA FOR ROSBAG USING BUMBLEBEE2
+## HOW TO COCCELT DATA FOR ROSBAG USING BUMBLEBEE2
 
 bumblebee2 publish StereoImage topic and using custom msgs(all the message used are from ufs_msgs).
 
