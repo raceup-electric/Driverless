@@ -239,17 +239,15 @@ def convert_ros_message_to_dictionary(message):
     #message_fields = _get_message_fields(message)
     funziona=True
     try: #modifica
-    	message_fields = message.get_fields_and_field_types()
+        message_fields = message.get_fields_and_field_types()
     except Exception as o:
         funziona=False
-    #print(message)
+        print(message)
     if(funziona):
-    	for (field_name, field_type) in message_fields.items():
-        	field_value = getattr(message, field_name)
-        	dictionary[field_name] = _convert_from_ros_type(field_type, field_value)
-        	print(message_fields.items())
-
-    	return dictionary
+        for (field_name, field_type) in message_fields.items():
+            field_value = getattr(message, field_name)
+            dictionary[field_name] = _convert_from_ros_type(field_type, field_value)
+        return dictionary
 
 def _convert_from_ros_type(field_type, field_value):
     if field_type in ros_primitive_types:
