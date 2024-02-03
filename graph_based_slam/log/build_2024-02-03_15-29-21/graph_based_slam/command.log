@@ -1,0 +1,2 @@
+Invoking command in '/home/stego/Driverless/graph_based_slam/build/graph_based_slam': CMAKE_PREFIX_PATH=/opt/ros/foxy /usr/bin/cmake /home/stego/Driverless/graph_based_slam -DCMAKE_INSTALL_PREFIX=/home/stego/Driverless/graph_based_slam/install/graph_based_slam
+Invoked command in '/home/stego/Driverless/graph_based_slam/build/graph_based_slam' returned '1': CMAKE_PREFIX_PATH=/opt/ros/foxy /usr/bin/cmake /home/stego/Driverless/graph_based_slam -DCMAKE_INSTALL_PREFIX=/home/stego/Driverless/graph_based_slam/install/graph_based_slam
