@@ -100,15 +100,6 @@ class PathPlanner(Node):
             200)
         self.current_position_subscription  # prevent unused variable warning
 												
-        # initialize Optimize Path client
-        # self.optimization_client = self.create_client(
-        #     OptimizePath,
-        #     'optimize_path')
-        # # while not self.optimization_client.wait_for_service(timeout_sec=1.0):
-        # #     logging.info(
-        # #         'Optimization Service not available, waiting again...')
-        # self.req = OptimizePath.Request()
-        # self.future = Future()
 										
 
         # initialize Planned Trajectory publisher        
@@ -236,9 +227,6 @@ class PathPlanner(Node):
                                                                                    next_cone=next_cone)
         if start_finish_detected:
             self.laps_completed += 1  # add counter laps completed
-            # if self.mode == Mode.EXPLORATION:  # switch to optimization ############################################################################
-            #     self.__prepare_optimization_request()
-            #     self.future = self.optimization_client.call_async(self.req)
 
         if self.mode == Mode.EXPLORATION:
 
@@ -311,23 +299,6 @@ class PathPlanner(Node):
             self.unknown_cones.append(
                 [next_cone.location.x, next_cone.location.y])
 
-    # def __prepare_optimization_request(self):
-    #     """
-    #     Prepare the Optimize Path request.
-
-    #     Prepare the request message for the Optimization Service 
-    #     with the Optimize Path message format defined in OptimizePath.srv.
-    #     """
-    #     self.req.blue_cones_x, self.req.blue_cones_y = zip(*self.blue_cones)
-    #     self.req.yellow_cones_x, self.req.yellow_cones_y = zip(
-    #         *self.yellow_cones)
-    #     self.req.orange_cones_x, self.req.orange_cones_y = zip(
-    #         *self.orange_cones) if self.orange_cones else [[], []]
-    #     self.req.big_orange_cones_x, self.req.big_orange_cones_y = zip(
-    #         *self.big_orange_cones) if self.big_orange_cones else [[], []]
-    #     self.req.refline_x, self.req.refline_y = zip(*self.calculated_path)
-
-    #     self.req.num_of_laps = self.laps - self.laps_completed
 
     def publish_planned_path(self, planned_path: List[Coordinate]):
         """
@@ -351,28 +322,7 @@ class PathPlanner(Node):
                 index=self.index, target_x=x, target_y=y, target_velocity=v))
             self.index += 1
 
-    # def publish_optimized_path(self, optimized_path: List[RaceTrajectory]):
-    #     """
-    #     Publish the optimized path.
-
-    #     :param optimized_path: The optimized path to be published.
-    #     """
-    #     logging.info('-----------------------')
-    #     logging.info(
-    #         f'Publishing Optimized Path: indexes {self.index} - {self.index + len(optimized_path) - 1}')
-
-    #     for entry in optimized_path:
-    #         x = entry[1]  # x_m
-    #         y = entry[2]  # y_m
-    #         v = entry[5]  # vx_mps
-
-    #         logging.debug('-----------------------')
-    #         logging.debug(
-    #             f'Publishing Optimized Path: i:{self.index} x:{x} y:{y} velocity:{v}')
-    #         self.planned_trajectory_publisher.publish(PlannedTrajectory(
-    #             index=self.index, target_x=x, target_y=y, target_velocity=v))
-    #         self.index += 1
-
+ 
 
 def main(args=None):
     """
@@ -387,42 +337,7 @@ def main(args=None):
 
     while rclpy.ok():
         rclpy.spin_once(path_planner)
-        # check if response from optimization service has been received
-        # if path_planner.future.done() and not optimized_laps_published:
-        #     try:
-        #         response = path_planner.future.result()
-        #     except Exception as e:
-        #         logging.error('Service call failed %r' % (e,))
-        #     else:
-        #         # switch mode to optimization => stop using exploration algorithm
-        #         path_planner.mode = Mode.OPTIMIZATION
-
-        #         # display exploration statistics
-        #         if path_planner.show_calc_times:
-        #             logging.info(f'-----------------------\n\
-        #                 Exploration Algorithm Statistics:\n\
-        #                     Min. Cycle: {min(path_planner.exploration_cycle_times)}\n\
-        #                     Max. Cycle: {max(path_planner.exploration_cycle_times)}\n\
-        #                     Avg. Cycle: {sum(path_planner.exploration_cycle_times)/len(path_planner.exploration_cycle_times)}\n\
-        #                     Nr of Cycles: {len(path_planner.exploration_cycle_times)}\n\
-        #                     Total Cycle: {sum(path_planner.exploration_cycle_times)}')
-        #             logging.warning(
-        #                 'Statistics only precise without Optimization Plots!')
-
-        #         # zip and map back together optimized path into one list from response
-        #         optimized_path = list(map(list, zip(response.optimized_path_s_m,
-        #                                             response.optimized_path_x_m,
-        #                                             response.optimized_path_y_m,
-        #                                             response.optimized_path_psi_rad,
-        #                                             response.optimized_path_kappa_radpm,
-        #                                             response.optimized_path_vx_mps,
-        #                                             response.optimized_path_ax_mps2)))
-
-        #         # publish the optimized path to the autopilot
-        #         path_planner.publish_optimized_path(optimized_path)
-
-        #         # only publish the path for as many laps as it needs
-        #         optimized_laps_published = True
+        
 
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically
