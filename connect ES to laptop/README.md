@@ -1,7 +1,7 @@
-#CONNECT WINDOWS LAPTOP TO ENBEDDED SYSTEM
+# CONNECT WINDOWS LAPTOP TO ENBEDDED SYSTEM
 
 
-##EMBEDDED SYSTEM CONFIGURATION
+## EMBEDDED SYSTEM CONFIGURATION
 1. First step is to clone the create_ap repostory and install it
 '''
 git clone https://github.com/oblique/create_ap
@@ -30,7 +30,7 @@ sudo apt install openssh-server
 
 ***
 
-##WINDOWS LAPTOP CONFIGURATION
+## WINDOWS LAPTOP CONFIGURATION
 1. To install Ubuntu, or rather to run bash commands on Windows, the Windows Subsystem for Linux (WSL) must first be enabled. To do this, open PowerShell as admin and run following commands:
 '''
 dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart
@@ -57,7 +57,7 @@ ssh -i C:\Users\Administrator\.ssh\id_rsa.txt bfft-agx-1@10.0.0.1
 
 ***
 
-##TRUBLESHOOTING
+## TRUBLESHOOTING
 
 it's possible that the AP don't work proprely. If this append you can resolve it using a specific command for start the ap with create_ap
 '''
