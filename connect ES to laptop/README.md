@@ -8,7 +8,7 @@ git clone https://github.com/oblique/create_ap
 cd create_ap
 sudo make install
 ```
-3. now you have to change the settings
+2. now you have to change the settings
 ```
 sudo gedit /etc/create_ap.config
 ```
@@ -19,11 +19,11 @@ INTERNET_IFACE=
 SSID=BFFT_VEHICLE_AP
 PASSPHRASE=XXXXXXXX
 ```
-5. for enabling the AP every time you start the system, run this command
+3. for enabling the AP every time you start the system, run this command
 ```
 systemctl enable create_ap
 ```
-7. For connect with ssh to the system you have to install  opnessh
+4. For connect with ssh to the system you have to install  opnessh
 ```
 sudo apt install openssh-server
 ```
@@ -35,6 +35,7 @@ sudo apt install openssh-server
 ```
 dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart
 ```
+2. You have to install ubuntu 20.04 from microsoft store
 3. Now we can adjust the permissions for the private SSH key. However, since WSL cannot store metadata for files in windows without the appropriate customization, we must first create a WSL.conf file and configure it accordingly to make this possible
 ```
 wsl vi /mnt/c/windows/system32/drivers/etc/wsl.conf
@@ -45,12 +46,12 @@ write the following lines and then save it:
 options = "metadata"
 ```
 
-5. if you want now you can chnage the permission of the file
+4. if you want now you can change the permission of the file
 ```
 wsl chmod 400 /mnt/c/users/administrator/.ssh/id_rsa.txt
 ```
 
-7. Now you can finally connect to the embedded system with the following command:
+5. Now you can finally connect to embedded system with the following command:
 ```
 ssh -i C:\Users\Administrator\.ssh\id_rsa.txt bfft-agx-1@10.0.0.1
 ```
@@ -59,7 +60,7 @@ ssh -i C:\Users\Administrator\.ssh\id_rsa.txt bfft-agx-1@10.0.0.1
 
 ## TRUBLESHOOTING
 
-it's possible that the AP don't work proprely. If this append you can resolve it using a specific command for start the ap with create_ap
+it's possible that AP doesn't work proprely. If this append you can resolve it using a specific command for start the ap with create_ap
 ```
 create_ap -n wlan0 MyAccessPoint MyPassPhrase
 ```
