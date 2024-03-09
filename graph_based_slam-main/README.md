@@ -8,6 +8,7 @@ As said before, it requires g2o framework for graph optimization. The official r
 <br/>
 
 			git clone https://github.com/RainerKuemmerle/g2o
+   			git checkout 5575db93f5d5790d6422177339e2001205311248
 			sudo apt-get install cmake libeigen3-dev libsuitesparse-dev qtdeclarative5-dev qt5-qmake libqglviewer-dev-qt5
 			cd g2o
 			mkdir build
