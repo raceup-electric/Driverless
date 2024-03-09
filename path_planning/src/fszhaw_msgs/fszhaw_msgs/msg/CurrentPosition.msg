@@ -1,5 +1,0 @@
-#std_msgs/Header header
-float64 vehicle_position_x
-float64 vehicle_position_y
-float64 yaw
-float64 vehicle_velocity
