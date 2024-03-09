@@ -1,13 +1,17 @@
 """Cone Publisher module."""
+import rclpy
+from rclpy.node import Node
+
 import csv
 import logging
 import os
 
-import rclpy
+
 from fs_msgs.msg import Cone, Track
 from geometry_msgs.msg import Point
 from path_planning.model.tag import Tag
 from rclpy.node import Node
+from graph_based_slam.msg import PoseGraph, GraphNode
 
 
 class ConePublisher(Node):
@@ -35,6 +39,9 @@ class ConePublisher(Node):
     big_orange_cones = []
     unknown_cones = []
     current_lap = 1
+
+    last_cone = 0
+
     track_received = False
 
     # indexes
@@ -60,30 +67,12 @@ class ConePublisher(Node):
         # initialize ROS parameters
         self.__initialize_parameters()
 
-        if self.track_name == 'sim_tool':
-
-            logging.info(
-                f'Receiving track from Simulation Tool at topic testing_only/track')
-            self.track_subscription = self.create_subscription(
-                Track,
-                'testing_only/track',
-                self.__track_listener_callback,
-                10)
-            self.track_subscription  # prevent unused variable warning
-
-        else:
-
-            self.is_acceleration = self.track_name.startswith("acceleration")
-            self.is_skidpad = self.track_name.startswith("skidpad")
-
-            if self.is_skidpad:
-                self.__load_map('skidpad_parts/skidpad_start.csv')
-                self.__load_map('skidpad_parts/skidpad_right.csv')
-                self.__load_map('skidpad_parts/skidpad_left.csv')
-                self.__load_map('skidpad_parts/skidpad_end.csv')
-            else:
-                # load track information from csv
-                self.__load_map(self.track_name)
+        self.track_subscription = self.create_subscription(
+            PoseGraph,
+            'pose_graph',
+            self.__pose_graph_callback,
+            10)
+        self.track_subscription 
 
         self.publisher_ = self.create_publisher(
             Cone,
@@ -117,91 +106,48 @@ class ConePublisher(Node):
 
         logging.info('ROS Parameters set!')
 
-    def __load_map(self, filename):
-        """
-        Load the track from the given csv file.
 
-        :param filename: Filename of the csv containing the track.
-        """
-        logging.info(
-            f'Loading track from csv file {filename}')
-        with open(
-            os.getcwd() + "/src/path_planning/resource/maps/" + filename
-        ) as csv_file:
-            csv_reader = csv.DictReader(csv_file, delimiter=",")
-
-            for row in csv_reader:
-                self.cones.append(
-                    [row["tag"], float(row["x"]), float(row["y"])])
-                if row["tag"] == Tag.BLUE.value:
-                    self.blue_cones.append(
-                        [row["tag"], float(row["x"]), float(row["y"])]
-                    )
-                elif row["tag"] == Tag.YELLOW.value:
-                    self.yellow_cones.append(
-                        [row["tag"], float(row["x"]), float(row["y"])]
-                    )
-                elif row["tag"] == Tag.ORANGE.value:
-                    self.orange_cones.append(
-                        [row["tag"], float(row["x"]), float(row["y"])]
-                    )
-                elif row["tag"] == Tag.BIG_ORANGE.value:
-                    self.big_orange_cones.append(
-                        [row["tag"], float(row["x"]), float(row["y"])]
-                    )
-                else:
-                    self.unknown_cones.append(
-                        [row["tag"], float(row["x"]), float(row["y"])]
-                    )
-        logging.info(f'Blue Cones: {len(self.blue_cones)}\n\
-            Yellow Cones: {len(self.yellow_cones)}\n\
-            Orange Cones: {len(self.orange_cones)}\n\
-            Big Orange Cones: {len(self.big_orange_cones)}\n\
-            Unknown Cones: {len(self.unknown_cones)}')
-
-    def __track_listener_callback(self, msg):
+    def __pose_graph_callback(self, msg):
         """
         Execute callback function when receiving the track from the simulation tool.
 
         :param msg: Message with the track.
         """
-        if self.track_received:
-            return
-        else:
-            for cone in msg.track:
-                if cone.color == Cone.BLUE:
-                    self.cones.append(
-                        [Tag.BLUE.value, cone.location.x, cone.location.y])
-                    self.blue_cones.append(
-                        [Tag.BLUE.value, cone.location.x, cone.location.y])
-                elif cone.color == Cone.YELLOW:
-                    self.cones.append(
-                        [Tag.YELLOW.value, cone.location.x, cone.location.y])
-                    self.yellow_cones.append(
-                        [Tag.YELLOW.value, cone.location.x, cone.location.y])
-                elif cone.color == Cone.ORANGE_SMALL:
-                    self.cones.append(
-                        [Tag.ORANGE.value, cone.location.x, cone.location.y])
-                    self.orange_cones.append(
-                        [Tag.ORANGE.value, cone.location.x, cone.location.y])
-                elif cone.color == Cone.ORANGE_BIG:
-                    self.cones.append(
-                        [Tag.BIG_ORANGE.value, cone.location.x, cone.location.y])
-                    self.big_orange_cones.append(
-                        [Tag.BIG_ORANGE.value, cone.location.x, cone.location.y])
-                else:
-                    self.cones.append(
-                        [Tag.UNKNOWN.value, cone.location.x, cone.location.y])
-                    self.unknown_cones.append(
-                        [Tag.UNKNOWN.value, cone.location.x, cone.location.y])
+        last_cone = len(self.cones)
+
+        for cone in msg.graph_nodes[last_cone:]:
+            if cone.color == "blue":
+                self.cones.append(
+                    [Tag.BLUE.value, cone.x, cone.y])
+                self.blue_cones.append(
+                    [Tag.BLUE.value, cone.x, cone.y])
+            elif cone.color == "yellow":
+                self.cones.append(
+                    [Tag.YELLOW.value, cone.x, cone.y])
+                self.yellow_cones.append(
+                    [Tag.YELLOW.value, cone.x, cone.y])
+            elif cone.color == "orange":
+                self.cones.append(
+                    [Tag.BIG_ORANGE.value, cone.x, cone.y])
+                self.big_orange_cones.append(
+                    [Tag.BIG_ORANGE.value, cone.x, cone.y])
+            elif cone.color != "":
+                self.cones.append(
+                    [Tag.UNKNOWN.value, cone.x, cone.y])
+                self.unknown_cones.append(
+                    [Tag.UNKNOWN.value, cone.x, cone.y])
 
             logging.info(f'Blue Cones: {len(self.blue_cones)}\n\
                 Yellow Cones: {len(self.yellow_cones)}\n\
-                Orange Cones: {len(self.orange_cones)}\n\
                 Big Orange Cones: {len(self.big_orange_cones)}\n\
                 Unknown Cones: {len(self.unknown_cones)}')
+            
+        if len(self.cones) > 0 and self.i < len(self.cones):
+            self.__publish_cone(self.cones[self.i])
+            self.i += 1
+        last_cone = len(self.cones)
 
-            self.track_received = True
+        #self.track_received = True
 
     def timer_callback(self):
         """Execute timer callback function for publishing cones."""

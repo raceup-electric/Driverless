@@ -29,7 +29,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'show_plot_exploration', default_value=TextSubstitution(text='False')),
         DeclareLaunchArgument(
-            'show_plot_optimization', default_value=TextSubstitution(text='False')),
+            'show_plot_optimization', default_value=TextSubstitution(text='True')),
         DeclareLaunchArgument(
             'mock_current_position', default_value=TextSubstitution(text='True')),
         Node(
