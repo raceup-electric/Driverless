@@ -12,7 +12,7 @@ As said before, it requires g2o framework for graph optimization. The official r
 			mkdir build
 			cd build
 			cmake ../
-			make
+			make -j4
 	
 Dependencies, includes and other paths must be set according to your installation folder. The CMakeLists.txt file of this package assumes that g2o is installed in your home directory.  
 If during the building of graph based slam package you encounter some error related to missing include files, undefined dependencies or similar, please check carefully the instructions in your CMakeLists.txt: the problem is probably related to linking to libraries of g2o.
