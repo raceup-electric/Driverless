@@ -27,4 +27,4 @@ sudo ./reader
 To correctly setup the GPS hardware with your Arduino, please refer to the images below. Ensure that the jumper cables are connected as shown for proper communication between the GPS module and the Arduino board:
 
 
-![setup](arduino_setup.png)  
+![setup](arduino_setup.jpg)  
