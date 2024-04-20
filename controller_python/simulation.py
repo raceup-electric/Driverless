@@ -14,6 +14,11 @@ def __init__(self):
         "planned_trajectory",
         self.__trajectoryCallback,
         200)
+    
+    #TODO: create subscriber to odometry on the final car
+"""     self.yaw_subscriber = self.create_subscription(
+        
+    ) """
 
 def __trajectoryCallback(self, planned_trajectory: PlannedTrajectory):
 
