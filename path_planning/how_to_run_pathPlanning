@@ -1,0 +1,55 @@
+HOW TO TEST PATH PLANNING (original version):
+	open the workspace root:
+	
+		source /opt/ros/foxy/setup.bash
+		colcon build
+		source install/setup.bash
+		
+	launch the program:
+	
+		ros2 launch launch/path_planning_launch_test.py show_plot_optimization:=True
+		
+	you can also test with different parameters. You can find the list of the parameters and
+	their possible values at:
+		https://github.com/Beomar97/path-planning
+		
+	the default map is small_track.csv. You can find its file , along with the other maps, at:
+		/home/raceupdv/Desktop/path-planning/src/path_planning/resource/maps
+		
+	If there happen to be errors when launching the code, in the terminal type:
+		pip list
+	and check if the following libraries have the corresponding verison value set as:
+		trajectory_planning_helpers == 0.76
+		1.18.1 =< numpy =< 1.21.1
+		scipy >= 1.3.3
+		quadprog == 0.1.7
+		matplotlib >= 3.3.1
+		
+
+HOW TO TEST PATH PLANNING IN THE DRIVERLESS WORKSPACE (connected to the SLAM module):
+	open the Terminator and type:
+		cd driverless_ws
+		
+	build the following libraries:
+		colcon build --packages-select eufs_msgs fs_msgs fszhaw_msgs kvaser_reader_driver graph_based_slam path_planning
+	
+	divide the terminator in 3, in each partition source ros:
+		source /opt/ros/foxy/setup.bash
+		source install/setup.bash
+	
+	in the first partition:
+		cd src/
+		ros2 launch path_planning/launch/path_planning_launch_test.py 
+	
+	in the second partition:
+		ros2 run graph_based_slam incremental_graph_SLAM
+		
+	in the third partition:
+		ros2 bag play bag_/bag_my_real_track
+
+
+
+
+
+
+
