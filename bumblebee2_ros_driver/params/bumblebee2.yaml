@@ -1,5 +1,0 @@
-bumblebee2:
-  ros__parameters:
-    shutter: 379 # Camera shutter
-    gain: 118 # Camera gain
-    sched_priority: 99 # Real-time priority assigned to the process.
