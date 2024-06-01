@@ -7,49 +7,62 @@
 
 #include <detector.hpp>
 #include "cxxopts.hpp"
+
 #include <opencv2/opencv.hpp>
 #include <opencv2/stereo.hpp>
 
 #include <torch/torch.h>
 
 // ROS headers
-#include <message_filters/subscriber.h>
 #include <rclcpp/rclcpp.hpp>
 #include <bumblebee2_ros_driver/msg/stereo_image.hpp>
-
-#include <eufs_msgs/msg/cone_array_with_covariance.hpp>
-#include <eufs_msgs/msg/cone_with_covariance.hpp>
-
-// time sync headers
-#include <message_filters/subscriber.h>
-#include <message_filters/time_synchronizer.h>
-#include <message_filters/sync_policies/exact_time.h>
-#include <message_filters/sync_policies/approximate_time.h>
-#include <message_filters/synchronizer.h>
-
-#include <sensor_msgs/msg/image.hpp>
-
-// TF2 headers
-#include <tf2/LinearMath/Quaternion.h>
-#include <tf2/exceptions.h>
-#include <tf2_ros/transform_broadcaster.h>
-#include <tf2_ros/transform_listener.h>
-#include <tf2_ros/buffer.h>
-#include <tf2/transform_datatypes.h>
-#include <tf2_sensor_msgs/tf2_sensor_msgs.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
-#include <tf2_eigen/tf2_eigen.h>
-
-using std::placeholders::_1;
-
 
 // Global variables
 int input_argc;
 const char **input_argv;
 
 const float SCORE_THRESHOLD = 0.7; // score of cone detection
-const int DISP_THRESHOLD = 8;
+const int DISP_THRESHOLD = 40;
 const int EPIPOLAR_TOLERANCE = 4;
+
+// real cones dimensions (in meters)
+// float small_cone_w = 0.228;
+// float small_cone_h = 0.325;
+// float big_cone_w = 0.285;
+// float big_cone_h = 0.505;
+
+/*
+ * Camera calibration must be performed on the single left and right cameras first.
+ * Then perform stereo calibration by keeping fixed the two camera matrices, and find the extrinsics.
+ */
+
+// camera intrinsics normal-size images
+// camera intrinsics (only stereo camera calibration)
+// float fx_left = 8.3445384486091120e+02;
+// float fy_left = 8.3319331763415039e+02;
+// float cx_left = 5.3688116338358907e+02;
+// float cy_left = 3.9247515377754166e+02;
+
+// float fx_right = 8.4282791458461202e+02;
+// float fy_right = 8.4185466189136139e+02;
+// float cx_right = 5.4914075573301375e+02;
+// float cy_right = 3.8964607572973455e+02;
+
+// float baseline = 11.99111738126831;
+
+// TODO: check which is the correct one to use
+// // left rectified model
+// float fx_left = 805.4786928667967;
+// float fy_left = 805.4786928667967;
+// float cx_left = 600.9664001464844;
+// float cy_left = 406.2781524658203;
+// // right rectified model
+// float fx_right = 805.4786928667967;
+// float fy_right = 805.4786928667967;
+// float cx_right = 612.6792907714844;
+// float cy_right = 406.2781524658203;
+// //rectified baseline
+// float rect_baseline = 11.712890625;
 
 // ***************** RESCALED RECTIFIED CAMERA MODELS ******************
 // left rectified model
@@ -63,7 +76,7 @@ float fy_right = 1609.856176264433;
 float cx_right = 1225.234039306641;
 float cy_right = 812.000862121582;
 // rectified baseline
-float rect_baseline = 119.9111738126831; //new value
+float rect_baseline = 23.538269043;
 
 std::vector<float> left_dist_coeffs{-3.7152596406995730e-01, 2.4024546380721631e-01, 8.0797409468957426e-04,
                                     -1.5833606305018795e-04, -1.2147409531133743e-01, 0., 0., 0.};
@@ -85,290 +98,612 @@ public:
     // constructor
     YoloDetector(const rclcpp::NodeOptions &options) : Node("yolo_detector", options)
     {
-        //subscriber to images published by bumblebee stereo camera
-        img_sub = this->create_subscription<bumblebee2_ros_driver::msg::StereoImage>("/stereo_image", 10, std::bind(&YoloDetector::img_callback, this, std::placeholders::_1));
-        ModelSetup();
-    
-        auto detector = Detector(weights, device_type);
-        // run once to warm up
-        std::cout << "Run once on empty image" << std::endl;
-        auto temp_img = cv::Mat::zeros(640, 640, CV_32FC3);
-        auto w1 = detector.Run(temp_img, 1.0f, 1.0f);
+        // img_sub = create_subscription<bumblebee2_ros_driver::msg::StereoImage>("/stereo_image", 10, std::bind(&YoloDetector::img_callback, this, std::placeholders::_1));
+        cv::namedWindow("left", cv::WINDOW_NORMAL);
+        cv::namedWindow("right", cv::WINDOW_NORMAL);
+        cv::resizeWindow("left", 1024, 768);
+        cv::resizeWindow("right", 1024, 768);
 
-        //publish 3d position of the cones
-        cone_pub = this->create_publisher<eufs_msgs::msg::ConeArrayWithCovariance>("/cone_pose", 1);
-        //graph_viz_pub = this->create_publisher<visualization_msgs::msg::Marker>("graph_viz", 1);
-        
+        ModelSetup();
+
+        performDetection();
     }
     virtual ~YoloDetector(){};
 
 private:
     // variables
     rclcpp::Subscription<bumblebee2_ros_driver::msg::StereoImage>::SharedPtr img_sub;
-    rclcpp::Publisher<eufs_msgs::msg::ConeArrayWithCovariance>::SharedPtr cone_pub;
-
     std::vector<std::string> class_names;
     std::string weights;
     float conf_thres;
     float iou_thres;
     torch::DeviceType device_type;
+    std::string labels_path = "src/slam_module/src/graph_based_slam/DeepNetPorting/coco_labels/fsoco.names";
+    std::string left_path = "/home/alessandra/Documenti/thesis/FSD_SLAM_navigation/eufs_sim_folder/src/slam_module/src/graph_based_slam/imgs/raw_images/left/";
+    std::string right_path = "/home/alessandra/Documenti/thesis/FSD_SLAM_navigation/eufs_sim_folder/src/slam_module/src/graph_based_slam/imgs/raw_images/right/";
 
-    std::string labels_path = "/home/raceupdv/driverless_ws/src/graph_based_slam/DeepNetPorting/coco_labels/fsoco.names";
-    std::string left_yolo_path = "/home/raceupdv/driverless_ws/src/graph_based_slam/imgs/left/";
-    std::string right_yolo_path = "/home/raceupdv/driverless_ws/src/graph_based_slam/imgs/right/";
+    std::string left_rect_path = "/home/alessandra/Documenti/thesis/FSD_SLAM_navigation/eufs_sim_folder/src/slam_module/src/graph_based_slam/imgs/rectified_images/left/";
+    std::string right_rect_path = "/home/alessandra/Documenti/thesis/FSD_SLAM_navigation/eufs_sim_folder/src/slam_module/src/graph_based_slam/imgs/rectified_images/right/";
 
-    int performDetection(cv::Mat_<uchar> left_img, cv::Mat_<uchar> right_img)
+    std::string left_yolo_path = "/home/alessandra/Documenti/thesis/FSD_SLAM_navigation/eufs_sim_folder/src/slam_module/src/graph_based_slam/imgs/yolo_images/left/";
+    std::string right_yolo_path = "/home/alessandra/Documenti/thesis/FSD_SLAM_navigation/eufs_sim_folder/src/slam_module/src/graph_based_slam/imgs/yolo_images/right/";
+
+    // test images taken in lab (first setup)
+    // std::string left_lab_path = "/home/alessandra/Scrivania/imgs/rect_left/";
+    // std::string right_lab_path = "/home/alessandra/Scrivania/imgs/rect_right/";
+    // std::string left_lab_yolo_path = "/home/alessandra/Scrivania/imgs/yolo_left/";
+    // std::string right_lab_yolo_path = "/home/alessandra/Scrivania/imgs/yolo_right/";
+
+    // CAMERA EXPERIMENTS IN LAB
+    // scena_close paths
+    std::string left_close_path = "/home/alessandra/Documenti/thesis/cameras_experiments/scena_close/rectified_images/left/";
+    std::string right_close_path = "/home/alessandra/Documenti/thesis/cameras_experiments/scena_close/rectified_images/right/";
+    std::string left_close_yolo_path = "/home/alessandra/Documenti/thesis/cameras_experiments/scena_close/yolo_images/left/";
+    std::string right_close_yolo_path = "/home/alessandra/Documenti/thesis/cameras_experiments/scena_close/yolo_images/right/";
+    // scena_far paths
+    std::string left_far_path = "/home/alessandra/Documenti/thesis/cameras_experiments/scena_far/rectified_images/left/";
+    std::string right_far_path = "/home/alessandra/Documenti/thesis/cameras_experiments/scena_far/rectified_images/right/";
+    std::string left_far_yolo_path = "/home/alessandra/Documenti/thesis/cameras_experiments/scena_far/yolo_images/left/";
+    std::string right_far_yolo_path = "/home/alessandra/Documenti/thesis/cameras_experiments/scena_far/yolo_images/right/";
+    // scena_mid paths
+    std::string left_mid_path = "/home/alessandra/Documenti/thesis/cameras_experiments/scena_mid/rectified_images/left/";
+    std::string right_mid_path = "/home/alessandra/Documenti/thesis/cameras_experiments/scena_mid/rectified_images/right/";
+    std::string left_mid_yolo_path = "/home/alessandra/Documenti/thesis/cameras_experiments/scena_mid/yolo_images/left/";
+    std::string right_mid_yolo_path = "/home/alessandra/Documenti/thesis/cameras_experiments/scena_mid/yolo_images/right/";
+    // scena_mix paths
+    std::string left_mix_path = "/home/alessandra/Documenti/thesis/cameras_experiments/scena_mix/rectified_images/left/";
+    std::string right_mix_path = "/home/alessandra/Documenti/thesis/cameras_experiments/scena_mix/rectified_images/right/";
+    std::string left_mix_yolo_path = "/home/alessandra/Documenti/thesis/cameras_experiments/scena_mix/yolo_images/left/";
+    std::string right_mix_yolo_path = "/home/alessandra/Documenti/thesis/cameras_experiments/scena_mix/yolo_images/right/";
+
+    // methods
+
+    /**
+     * TODO:
+     */
+    int performDetection()
     {
-        std::string res_left_yolo_path = "/home/raceupdv/driverless_ws/src/graph_based_slam/imgs/left/";
-        std::string res_right_yolo_path = "/home/raceupdv/driverless_ws/src/graph_based_slam/imgs/right/";
+        // read images from a folder
+        // perform cones detection with yolo
+        // perform stereo matching to find x,y coords
+        //      '---> convert disparity into m and get positions in camera system
+        // write the result to a txt file
+
+        //************************** LOAD RAW IMAGES (only for rescaling) *******************
+        // std::string raw_left_path = "/home/alessandra/Documenti/thesis/cameras_experiments/scena_mix/raw_images/left/";
+        // std::string raw_right_path = "/home/alessandra/Documenti/thesis/cameras_experiments/scena_mix/raw_images/right/";
+        //**************************************************************
+
+        // rectified rescaled images
+        std::string res_left_path = "/home/alessandra/Documenti/thesis/cameras_experiments/scena_close/rect_rescaled_images/left/";
+        std::string res_right_path = "/home/alessandra/Documenti/thesis/cameras_experiments/scena_close/rect_rescaled_images/right/";
+        // rescaled yolo output folders
+        std::string res_left_yolo_path = "/home/alessandra/Documenti/thesis/cameras_experiments/scena_close/yolo_rescaled_images/left/";
+        std::string res_right_yolo_path = "/home/alessandra/Documenti/thesis/cameras_experiments/scena_close/yolo_rescaled_images/right/";
+
+        // 1 - load saved images from folders
+        std::vector<cv::String> fn_left, fn_right;
+        std::vector<cv::Mat> imgs_left, imgs_right;
+        cv::glob(res_left_yolo_path + "*.png", fn_left, false); // rectified images
+        cv::glob(res_right_yolo_path + "*.png", fn_right, false);
+        for (size_t i = 0; i < fn_left.size(); i++)
+        {
+            imgs_left.push_back(cv::imread(fn_left[i])); // NB: imread reads in BGR color space
+            imgs_right.push_back(cv::imread(fn_right[i]));
+        }
+
+        //*********************** RESCALE IMAGES ****************************
+
+        // std::string res_left_path = "/home/alessandra/Documenti/thesis/cameras_experiments/scena_mix/raw_rescaled_images/left/";
+        // std::string res_right_path = "/home/alessandra/Documenti/thesis/cameras_experiments/scena_mix/raw_rescaled_images/right/";
+
+        // for (size_t i = 0; i < fn_left.size(); i++)
+        // {
+        //     // read images
+        //     cv::Mat l_im = cv::imread(fn_left[i]);
+        //     cv::Mat r_im = cv::imread(fn_right[i]);
+
+        //     // rescale them
+        //     resize(l_im, l_im, cv::Size(0, 0), 2, 2, cv::INTER_CUBIC); // double scale
+        //     resize(r_im, r_im, cv::Size(0, 0), 2, 2, cv::INTER_CUBIC); // double scale
+
+        //     // save images
+        //     std::stringstream l_name;
+        //     l_name << res_left_path + "img_";
+        //     l_name << std::setfill('0') << std::setw(4) << img_number;
+        //     std::string left_n = l_name.str() + ".png";
+
+        //     std::stringstream r_name;
+        //     r_name << res_right_path + "img_";
+        //     r_name << std::setfill('0') << std::setw(4) << img_number;
+        //     std::string right_n = r_name.str() + ".png";
+
+        //     cv::imwrite(left_n, l_im);
+        //     cv::imwrite(right_n, r_im);
+        //     img_number++;
+
+        //     // imgs_left.push_back(l_im);
+        //     // imgs_right.push_back(r_im);
+        // }
+        //*******************************************************************
+
+        // 2 - load saved YOLO detections from txt files
+        std::vector<cv::String> fn_txt_left, fn_txt_right;
+        std::vector<cv::Mat> txt_left, txt_right;
+        cv::glob(res_left_yolo_path + "*.txt", fn_txt_left, false);
+        cv::glob(res_right_yolo_path + "*.txt", fn_txt_right, false);
+
+        // 3 - stereo matching for every image
+        for (size_t i = 0; i < imgs_left.size(); i++)
+        {
+            // current pair of images
+            cv::Mat left_image = imgs_left[i];
+            cv::Mat right_image = imgs_right[i];
+
+            std::vector<std::vector<Detection>> result_left, result_right; // detections in every image
+            std::vector<Detection> det_vec_l, det_vec_r;
+
+            // read detection of left img
+            std::ifstream l_infile(fn_txt_left[i]);
+            std::string l_line;
+            std::cout << "... reading left detections ...\n";
+            while (getline(l_infile, l_line))
+            {
+                Detection det_line;
+                std::stringstream line_stream(l_line);
+                line_stream >> det_line.bbox.x >> det_line.bbox.y >> det_line.bbox.width >> det_line.bbox.height >> det_line.score >> det_line.class_idx;
+                det_vec_l.push_back(det_line);
+            }
+            result_left.push_back(det_vec_l);
+
+            l_infile.close();
+
+            // read detection of right img
+            std::ifstream r_infile(fn_txt_right[i]);
+            std::string r_line;
+            std::cout << "... reading right detections ...\n";
+            while (getline(r_infile, r_line))
+            {
+                Detection det_line;
+                std::stringstream line_stream(r_line);
+                line_stream >> det_line.bbox.x >> det_line.bbox.y >> det_line.bbox.width >> det_line.bbox.height >> det_line.score >> det_line.class_idx;
+                det_vec_r.push_back(det_line);
+            }
+            result_right.push_back(det_vec_r);
+
+            r_infile.close();
+
+            std::cout << result_left[0].size() << "\n";
+            std::cout << result_right[0].size() << "\n";
+
+            std::vector<cv::Point> centers_l, centers_r;
+
+            // process the result
+            // search along the epipolar line for the corresponding bb in the other image
+
+            std::vector<cv::Point3f> sparse_pts_to_reproj;
+            std::vector<cv::Point3f> sparse_pts_to_reproj_test; // try to reproject right centers in red
+
+            for (auto l_det : result_left[0])
+            {
+                auto lbb_tl = l_det.bbox.tl(); // retrieve tl corner of left bb
+                for (auto r_det : result_right[0])
+                {
+                    auto rbb_tl = r_det.bbox.tl();
+                    /*
+                     * To match bboxes in left and right images:
+                     *  - must be in a neighborhood of 2 pixels along y (instead of only precisely on epipolar line)
+                     *  - must have same class (cone color)
+                     *  - must have at least a certain confidence score
+                     *  - must be at least 10 px height (to cut too far away cones)
+                     *
+                     * Then, compute depth both as:
+                     *      --> (focal * baseline) / disparity
+                     *      --> 1 / disparity
+                     */
+                    if (abs(rbb_tl.y - lbb_tl.y) <= EPIPOLAR_TOLERANCE && r_det.class_idx == l_det.class_idx && l_det.score > SCORE_THRESHOLD && l_det.bbox.height > 10)
+                    {
+                        // // compute the center of the bbox, to average the variance of the rectangle
+                        cv::Point l_center(lbb_tl.x + (l_det.bbox.width / 2.0), lbb_tl.y + l_det.bbox.height / 2.0);
+                        cv::Point r_center(rbb_tl.x + (r_det.bbox.width / 2.0), rbb_tl.y + r_det.bbox.height / 2.0);
+
+                        // if (abs(lbb_tl.x - rbb_tl.x) < DISP_THRESHOLD)
+                        if (abs(l_center.x - r_center.x) < DISP_THRESHOLD)
+                        {
+                            centers_l.push_back(l_center);
+                            centers_r.push_back(r_center);
+
+                            // float disparity = lbb_tl.x - rbb_tl.x;
+                            float disparity = l_center.x - r_center.x;
+                            if (disparity == 0)
+                                disparity = 0.01;
+                            float depth1 = (fy_right * rect_baseline) / disparity;
+                            float depth2 = (fy_left * rect_baseline) / disparity;
+
+                            std::cout << "Found BB correspondence\n";
+                            std::cout << "dimension is " << l_det.bbox.height << "\n";
+                            std::cout << "color is " << l_det.class_idx << "\n";
+                            std::cout << "left tl corner is " << lbb_tl.x << " " << lbb_tl.y << "\n";
+                            std::cout << "right tl corner is " << rbb_tl.x << " " << rbb_tl.y << "\n";
+                            std::cout << "left center is " << l_center.x << " " << l_center.y << "\n";
+                            std::cout << "right center is " << r_center.x << " " << r_center.y << "\n";
+                            std::cout << "disparity = " << disparity << " --> depth = " << depth1 << " or " << depth2 << "\n\n\n";
+
+                            // 2D img point to be reprojected in 3D
+                            // start from left centers
+                            sparse_pts_to_reproj.push_back(cv::Point3f(l_center.x, l_center.y, disparity));
+                            // start from right centers
+                            sparse_pts_to_reproj_test.push_back(cv::Point3f(r_center.x, r_center.y, -disparity));
+                        }
+                    }
+                }
+            }
+
+            // visualize matched points
+            // cv::namedWindow("match", cv::WINDOW_AUTOSIZE);
+            // cv::Mat match_img;
+            // cv::hconcat(left_image, right_image, match_img);
+            // std::random_device rd;                         // obtain a random number from hardware
+            // std::mt19937 gen(rd());                        // seed the generator
+            // std::uniform_int_distribution<> distr(0, 255); // define the range
+            // for (int j = 0; j < centers_l.size(); j++)
+            // {
+            //     // draw all the matches
+            //     cv::circle(match_img, centers_l[j], 1, cv::Scalar(0, 0, 255), 3);
+            //     cv::circle(match_img, cv::Point(centers_r[j].x + left_image.cols, centers_r[j].y), 1, cv::Scalar(0, 0, 255), 3);
+
+            //     cv::line(match_img, centers_l[j], cv::Point(centers_r[j].x + left_image.cols, centers_r[j].y), cv::Scalar(distr(gen), distr(gen), distr(gen)), 1);
+            // }
+            // // cv::imwrite("~/Scrivania/match.png", match_img);
+            // cv::imshow("match", match_img);
+            // cv::waitKey();
+
+            centers_l.clear();
+            centers_r.clear();
+
+            // construct a vector of sparse points to be reprojected in 3D --> use perspectiveTransform()
+            // --> vectors of (x, y, disp), Q matrix from stereo_rectify
+            // q_mat is a 4x4 perspective transformation matrix from stereo rectification --> disparity-to-depth mapping matrix
+            /*
+                disp2depth matrix from stereo_rectify:
+
+                    [1, 0, 0, -600.9664001464844;
+                    0, 1, 0, -406.2781524658203;
+                    0, 0, 0, 805.4786928667967;
+                    0, 0, 8.33929566858118, 97.67725805562762]
+            */
+            // cv::Mat q_matrix = cv::Mat::zeros(4, 4, CV_32F);
+            // q_matrix.at<float>(0, 0) = 1.0;
+            // q_matrix.at<float>(1, 1) = 1.0;
+            // q_matrix.at<float>(0, 3) = -600.9664001464844;
+            // q_matrix.at<float>(1, 3) = -406.2781524658203;
+            // q_matrix.at<float>(2, 3) = 805.4786928667967;
+            // q_matrix.at<float>(3, 2) = 8.33929566858118;
+            // q_matrix.at<float>(3, 3) = 97.67725805562762;
+
+            // // inverse disp2depth matrix (for right centers)
+            // // [ 1, 0, 0, -612.6792907714844;
+            // //   0, 1, 0, -406.2781524658203;
+            // //   0, 0, 0, 805.4786928667967;
+            // //   0, 0, -8.33929566858118, 97.67725805562762 ]
+
+            // cv::Mat inv_q_matrix = cv::Mat::zeros(4, 4, CV_32F);
+            // inv_q_matrix.at<float>(0, 0) = 1.0;
+            // inv_q_matrix.at<float>(1, 1) = 1.0;
+            // inv_q_matrix.at<float>(0, 3) = -612.6792907714844;
+            // inv_q_matrix.at<float>(1, 3) = -406.2781524658203;
+            // inv_q_matrix.at<float>(2, 3) = 805.4786928667967;
+            // inv_q_matrix.at<float>(3, 2) = -8.33929566858118;
+            // inv_q_matrix.at<float>(3, 3) = 97.67725805562762;
+
+            // ******************* RESCALED Q MATRICES ****************
+            cv::Mat q_matrix = cv::Mat::zeros(4, 4, CV_32F);
+            q_matrix.at<float>(0, 0) = 1.0;
+            q_matrix.at<float>(1, 1) = 1.0;
+            q_matrix.at<float>(0, 3) = -1201.695770263672;
+            q_matrix.at<float>(1, 3) = -812.000862121582;
+            q_matrix.at<float>(2, 3) = 1609.856176264433;
+            q_matrix.at<float>(3, 2) = 8.33929566858118;
+            q_matrix.at<float>(3, 3) = 196.2925850759278;
+
+            cv::Mat inv_q_matrix = cv::Mat::zeros(4, 4, CV_32F);
+            inv_q_matrix.at<float>(0, 0) = 1.0;
+            inv_q_matrix.at<float>(1, 1) = 1.0;
+            inv_q_matrix.at<float>(0, 3) = -1225.234039306641;
+            inv_q_matrix.at<float>(1, 3) = -812.000862121582;
+            inv_q_matrix.at<float>(2, 3) = 1609.856176264433;
+            inv_q_matrix.at<float>(3, 2) = -8.33929566858118;
+            inv_q_matrix.at<float>(3, 3) = 196.2925850759278;
+            //*********************************************************
+
+            // std::cout << "q_matrix: \n"
+            //           << q_matrix << "\n";
+            // std::cout << "inv_q_matrix: \n"
+            //           << inv_q_matrix << "\n";
+
+            // get 3D points from left centers
+            std::vector<cv::Point3f> real_3D_pts(sparse_pts_to_reproj.size());
+            cv::perspectiveTransform(sparse_pts_to_reproj, real_3D_pts, q_matrix);
+
+            // same for right centers
+            std::vector<cv::Point3f> test_real_3D_pts(sparse_pts_to_reproj_test.size());
+            cv::perspectiveTransform(sparse_pts_to_reproj_test, test_real_3D_pts, inv_q_matrix);
+
+            std::cout << "++++++++++++++++ IMAGE " << i << " ++++++++++++++++++\n";
+            for (int i = 0; i < real_3D_pts.size(); i++)
+            {
+                /**
+                const float u = sparse_pts_to_reproj_test[i].x;
+                const float v = sparse_pts_to_reproj_test[i].y;
+                const float x = (u-cx_left)*sparse_pts_to_reproj_test[i].z*(1.0/fx_left);
+                const float y = (v-cy_left)*sparse_pts_to_reproj_test[i].z*(1.0/fx_left);
+                /**/
+
+                std::cout << "3D coordinates of cone " << i << " (from left centers): \n";
+                std::cout << real_3D_pts[i] << "\n";
+
+                std::cout << "3D coordinates of cone " << i << " (from right centers): \n";
+                std::cout << test_real_3D_pts[i] << "\n";
+            }
+
+            // reproject back to (rectified) image plane
+            // take the 3D point, draw a rectangle around it and reproject the corners into the image plane
+            //  --> if I obtain something similar to the BB, then it is correct
+            // or simply reproject the point and see if it corresponds to the center of the BB
+
+            cv::Mat left_cam_mat = GetCameraMat(fx_left, fy_left, cx_left, cy_left);
+            cv::Mat right_cam_mat = GetCameraMat(fx_right, fy_right, cx_right, cy_right);
+
+            std::vector<cv::Point2f> left_img_points, right_img_points, test_left_img_points, test_right_img_points;
+            cv::Mat rvec, inv_rvec;
+
+            // convert rotation matrix to r_vec
+            cv::Rodrigues(GetRotMat(), rvec);
+
+            // same for right centers
+            cv::Rodrigues(GetRotMat().inv(), inv_rvec);
+
+            // project into the left image plane
+            // no transform because we are in left camera frame
+            cv::projectPoints(real_3D_pts, zero_tvec, zero_tvec, left_cam_mat, zero_dist_coeffs, left_img_points);
+            cv::projectPoints(real_3D_pts, rvec, tvec, right_cam_mat, zero_dist_coeffs, right_img_points);
+
+            // same for right centers
+            cv::projectPoints(test_real_3D_pts, inv_rvec, -tvec, left_cam_mat, zero_dist_coeffs, test_left_img_points);
+            cv::projectPoints(test_real_3D_pts, zero_tvec, zero_tvec, right_cam_mat, zero_dist_coeffs, test_right_img_points);
+
+            // draw the projected points to compare with the BB centers
+            for (int j = 0; j < left_img_points.size(); j++)
+            {
+                std::cout << "GREEN: reprojection into left image (from left centers) ** 2x focal ** " << left_img_points[j].x << " " << left_img_points[j].y << "\n";
+                std::cout << "GREEN: reprojection into right image (from left centers) ** 2x focal ** " << right_img_points[j].x << " " << right_img_points[j].y << "\n";
+                cv::circle(left_image, left_img_points[j], 1, cv::Scalar(0, 255, 0), 4);
+                cv::circle(right_image, right_img_points[j], 1, cv::Scalar(0, 255, 0), 4);
+
+                std::cout << "RED: reprojection into left image (from right centers) ** 2x focal ** " << test_left_img_points[j].x << " " << test_left_img_points[j].y << "\n";
+                std::cout << "RED: reprojection into right image (from right centers) ** 2x focal ** " << test_right_img_points[j].x << " " << test_right_img_points[j].y << "\n\n";
+                cv::circle(left_image, test_left_img_points[j], 1, cv::Scalar(0, 0, 255), 4);
+                cv::circle(right_image, test_right_img_points[j], 1, cv::Scalar(0, 0, 255), 4);
+            }
+
+            // *** 3D POINTS WITH ORIGINAL IMAGE SCALE ***
+            // reproject into the scaled images also the 3D points computed with the original images
+            // to see if the error of the reprojection between left and right images is smaller
+
+            // ++++++++++++++++ IMAGE 0 ++++++++++++++++++
+            // CONE (left centers) 0:
+            // [-0.223043, 1.28451, 3.]
+            // CONE (right centers) 0:
+            // [-0.342957, 1.2748, 3.90842]
+
+            // CONE (left centers) 1:
+            // [0.766825, 1.28451, 3.90842]
+            // CONE (right centers) 1:
+            // [0.646911, 1.2748, 3.90842]
+
+            // CONE (left centers) 2:
+            // [-0.213428, 1.30288, 6.14708]
+            // CONE (right centers) 2:
+            // [-0.333342, 1.30288, 6.14708]
+
+            // CONE (left centers) 3:
+            // [0.760786, 1.2321, 5.77927]
+            // CONE (right centers) 3:
+            // [0.640872, 1.22492, 5.77927]
+
+            std::vector<cv::Point3f> original_3D_pts_left;
+            original_3D_pts_left.push_back(cv::Point3f(-0.223043, 1.28451, 3.));
+            original_3D_pts_left.push_back(cv::Point3f(0.766825, 1.28451, 3.90842));
+            original_3D_pts_left.push_back(cv::Point3f(-0.223043, 1.28451, 3.));
+            original_3D_pts_left.push_back(cv::Point3f(0.760786, 1.2321, 5.77927));
+
+            std::vector<cv::Point3f> original_3D_pts_right;
+            original_3D_pts_right.push_back(cv::Point3f(-0.342957, 1.2748, 3.90842));
+            original_3D_pts_right.push_back(cv::Point3f(0.646911, 1.2748, 3.90842));
+            original_3D_pts_right.push_back(cv::Point3f(-0.333342, 1.30288, 6.14708));
+            original_3D_pts_right.push_back(cv::Point3f(0.640872, 1.22492, 5.77927));
+
+            std::vector<cv::Point2f> orig_left_img_points, orig_right_img_points, orig_test_left_img_points, orig_test_right_img_points;
+
+            // project into the left image plane
+            cv::projectPoints(original_3D_pts_left, zero_tvec, zero_tvec, left_cam_mat, zero_dist_coeffs, orig_left_img_points);
+            cv::projectPoints(original_3D_pts_left, rvec, tvec, right_cam_mat, zero_dist_coeffs, orig_right_img_points);
+
+            // same for right centers
+            cv::projectPoints(original_3D_pts_right, inv_rvec, -tvec, left_cam_mat, zero_dist_coeffs, orig_test_left_img_points);
+            cv::projectPoints(original_3D_pts_right, zero_tvec, zero_tvec, right_cam_mat, zero_dist_coeffs, orig_test_right_img_points);
+
+            // draw the projected points to compare with the BB centers
+            for (int j = 0; j < orig_left_img_points.size(); j++)
+            {
+                std::cout << "BLUE: reprojection into left image (from left centers) ** orig focal ** \n"
+                          << orig_left_img_points[j].x << " " << orig_left_img_points[j].y << "\n";
+                std::cout << "BLUE: reprojection into right image (from left centers) ** orig focal ** \n"
+                          << orig_right_img_points[j].x << " " << orig_right_img_points[j].y << "\n";
+                cv::circle(left_image, orig_left_img_points[j], 1, cv::Scalar(255, 0, 0), 4);
+                cv::circle(right_image, orig_right_img_points[j], 1, cv::Scalar(255, 0, 0), 4);
+
+                std::cout << "FUCHSIA: reprojection into left image (from right centers) ** orig focal ** \n"
+                          << orig_test_left_img_points[j].x << " " << orig_test_left_img_points[j].y << "\n";
+                std::cout << "FUCHSIA: reprojection into right image (from right centers) ** orig focal ** \n"
+                          << orig_test_right_img_points[j].x << " " << orig_test_right_img_points[j].y << "\n\n";
+                cv::circle(left_image, orig_test_left_img_points[j], 1, cv::Scalar(255, 0, 255), 4);
+                cv::circle(right_image, orig_test_right_img_points[j], 1, cv::Scalar(255, 0, 255), 4);
+            }
+
+            // *******************************************
+
+            cv::namedWindow("match", cv::WINDOW_NORMAL);
+            cv::Mat match_img;
+            cv::hconcat(left_image, right_image, match_img);
+
+            resize(match_img, match_img, cv::Size(0, 0), 0.5, 0.5, cv::INTER_CUBIC); // double scale
+
+            cv::imshow("match", match_img);
+            cv::imwrite("/home/alessandra/Scrivania/match.png", match_img);
+            cv::waitKey();
+
+            // reproject to raw image planes
+            // load raw images from folders
+            // std::vector<cv::String> raw_fn_left, raw_fn_right;
+            // std::vector<cv::Mat> raw_imgs_left, raw_imgs_right;
+            // cv::glob(left_path + "*.png", raw_fn_left, false); // rectified images
+            // cv::glob(right_path + "*.png", raw_fn_right, false);
+            // for (size_t i = 0; i < raw_fn_left.size(); i++)
+            // {
+            //     raw_imgs_left.push_back(cv::imread(raw_fn_left[i])); // NB: imread reads in BGR color space
+            //     raw_imgs_right.push_back(cv::imread(raw_fn_right[i]));
+            // }
+        }
 
         //************************************************************** TODO: ***************************************************************
-        //run YOLO for cones detection
-        const int fps = 20;
+        // TODO: this block of code is to perform detectin with YOLO. It is not used for now, since imgs and bboxes are saved on files TODO:
+        //  2- run YOLO for cones detection
+        // const int fps = 20;
 
-        auto detector = Detector(weights, device_type);
+        // auto detector = Detector(weights, device_type);
+        // // run once to warm up
+        // std::cout << "Run once on empty image" << std::endl;
+        // auto temp_img = cv::Mat::zeros(640, 640, CV_32FC3);
+        // auto w1 = detector.Run(temp_img, 1.0f, 1.0f);
+        // std::cout << imgs_left.size() << std::endl;
 
-        // result has a number of layers --> consider result[0] to have a vector of detections
-        // each element of this vector, a Detection, contains: cv::Rect bbox, float score, int class_index
-        auto result_left = detector.Run(left_img, conf_thres, iou_thres); // NB: it converts to RGB
-        auto result_right = detector.Run(right_img, conf_thres, iou_thres);
+        // for (int i = 0; i < imgs_left.size(); i++)
+        // {
+        //     // here in BGR
+        //     auto left = imgs_left[i];
+        //     auto right = imgs_right[i];
+
+        //     // just to keep a copy of the original image
+        //     auto l = imgs_left[i].clone();
+        //     auto r = imgs_right[i].clone();
+
+        //     // result has a number of layers --> consider result[0] to have a vector of detections
+        //     // each element of this vector, a Detection, contains: cv::Rect bbox, float score, int class_index
+        //     auto result_left = detector.Run(left, conf_thres, iou_thres); // NB: it converts to RGB
+        //     auto result_right = detector.Run(right, conf_thres, iou_thres);
+
+        //     // visualize detection
+        //     Demo("left", left, result_left, class_names);
+        //     Demo("right", right, result_right, class_names);
+        //     if (cv::waitKey(10) == 27)
+        //     {
+        //         cv::destroyAllWindows();
+        //         break;
+        //     }
+
+        //     //*********************** save YOLO detections once **************
+        //     // construct the filename
+        //     std::stringstream l_filename;
+        //     l_filename << res_left_yolo_path + "img_";
+        //     l_filename << std::setfill('0') << std::setw(4) << img_number;
+        //     std::string left_name = l_filename.str() + ".txt";
+
+        //     std::stringstream r_filename;
+        //     r_filename << res_right_yolo_path + "img_";
+        //     r_filename << std::setfill('0') << std::setw(4) << img_number;
+        //     std::string right_name = r_filename.str() + ".txt";
+
+        //     // open file for writing and write data
+        //     std::ofstream l_fw(left_name, std::ofstream::out);
+
+        //     if (l_fw.is_open())
+        //     {
+        //         for (int b = 0; b < result_left[0].size(); b++)
+        //         {
+        //             l_fw << result_left[0][b].bbox.x << " " << result_left[0][b].bbox.y << " " << result_left[0][b].bbox.width << " " << result_left[0][b].bbox.height << " " << result_left[0][b].score << " " << result_left[0][b].class_idx << "\n";
+        //         }
+        //         l_fw.close();
+        //     }
+        //     else
+        //     {
+        //         std::cout << "Problem writing the detection results file!\n";
+        //     }
+        //     l_fw.close();
+
+        //     std::ofstream r_fw(right_name, std::ofstream::out);
+        //     if (r_fw.is_open())
+        //     {
+        //         for (int b = 0; b < result_right[0].size(); b++)
+        //         {
+        //             r_fw << result_right[0][b].bbox.x << " " << result_right[0][b].bbox.y << " " << result_right[0][b].bbox.width << " " << result_right[0][b].bbox.height << " " << result_right[0][b].score << " " << result_right[0][b].class_idx << "\n";
+        //         }
+        //         r_fw.close();
+        //     }
+        //     else
+        //     {
+        //         std::cout << "Problem writing the detection results file!\n";
+        //     }
+        //     r_fw.close();
+
+        //     // save images with bounding boxes
+        //     std::stringstream l_name;
+        //     l_name << res_left_yolo_path + "img_";
+        //     l_name << std::setfill('0') << std::setw(4) << img_number;
+        //     std::string left_n = l_name.str() + ".png";
+
+        //     std::stringstream r_name;
+        //     r_name << res_right_yolo_path + "img_";
+        //     r_name << std::setfill('0') << std::setw(4) << img_number;
+        //     std::string right_n = r_name.str() + ".png";
+
+        //     cv::imwrite(left_n, left);
+        //     cv::imwrite(right_n, right);
+        //     img_number++;
+        //     //******************************************************************************
+        //     //************************************************************** TODO: ***************************************************************
+        // }
     }
 
     /**
      * Called whenever a new image is produced by the stereo camera. It is a custom ROS message.
      * TODO: use this when using in real time, now work directly on saved images!
      */
-    void img_callback(const bumblebee2_ros_driver::msg::StereoImage::SharedPtr img_msg){
-    
-        // std::cout << "img_callback reached!\n";
-        
+    // void img_callback(const bumblebee2_ros_driver::msg::StereoImage::SharedPtr img_msg)
+    // {
 
-        cv::Mat_<uchar> left_img(img_msg->height, img_msg->width, img_msg->left_data.data());
-        cv::Mat_<uchar> right_img(img_msg->height, img_msg->width, img_msg->right_data.data());
+    //     std::cout << "img_callback reached!\n";
 
-        cv::Mat_<cv::Vec3b> left_img_rgb(left_img.rows, left_img.cols),
-            right_img_rgb(right_img.rows, right_img.cols);
+    //     cv::Mat_<uchar> left_img(img_msg->height, img_msg->width, img_msg->left_data.data()),
+    //         right_img(img_msg->height, img_msg->width, img_msg->right_data.data());
 
-        // convert to RGB images
-        cv::cvtColor(left_img, left_img_rgb, cv::COLOR_BayerGR2RGB);
-        cv::cvtColor(right_img, right_img_rgb, cv::COLOR_BayerGR2RGB);
-        
-        std::string res_left_yolo_path = "/home/raceupdv/driverless_ws/src/graph_based_slam/imgs/left/";
-        std::string res_right_yolo_path = "/home/raceupdv/driverless_ws/src/graph_based_slam/imgs/right/";
+    //     cv::Mat_<cv::Vec3b> left_img_rgb(left_img.rows, left_img.cols),
+    //         right_img_rgb(right_img.rows, right_img.cols);
 
-        auto detector = Detector(weights, device_type);
+    //     // convert to RGB images
+    //     cv::cvtColor(left_img, left_img_rgb, cv::COLOR_BayerGR2RGB);
+    //     cv::cvtColor(right_img, right_img_rgb, cv::COLOR_BayerGR2RGB);
 
-        // result has a number of layers --> consider result[0] to have a vector of detections
-        // each element of this vector, a Detection, contains: cv::Rect bbox, float score, int class_index
-        auto result_left = detector.Run(left_img_rgb, conf_thres, iou_thres); // NB: it converts to RGB
-        auto result_right = detector.Run(right_img_rgb, conf_thres, iou_thres);
+    // }
 
-
-        //stereo matching
-        std::vector<Detection> det_vec_l, det_vec_r;
-        std::vector<cv::Point> centers_l, centers_r;
-
-        // search along the epipolar line for the corresponding bb in the other image
-        std::vector<cv::Point3f> sparse_pts_to_reproj;
-        std::vector<cv::Point3f> sparse_pts_to_reproj_blue; //index 0
-        std::vector<cv::Point3f> sparse_pts_to_reproj_yellow; //index 1
-        std::vector<cv::Point3f> sparse_pts_to_reproj_big_orange; //index 3
-        std::vector<cv::Point3f> sparse_pts_to_reproj_test; // try to reproject right centers in red
-
-
-        for (auto l_det : result_left[0])
-        {
-            auto lbb_tl = l_det.bbox.tl(); // retrieve tl corner of left bb
-            for (auto r_det : result_right[0])
-            {
-                auto rbb_tl = r_det.bbox.tl();
-                /*
-                    * To match bboxes in left and right images:
-                    *  - must be in a neighborhood of 2 pixels along y (instead of only precisely on epipolar line)
-                    *  - must have same class (cone color)
-                    *  - must have at least a certain confidence score
-                   yolo_cones_detection_offline.cpp *  - must be at least 10 px height (to cut too far away cones)
-                    *
-                    * Then, compute depth both as:
-                    *      --> (focal * baseline) / disparity
-                    *      --> 1 / disparity
-                */
-                if (abs(rbb_tl.y - lbb_tl.y) <= EPIPOLAR_TOLERANCE && l_det.score > SCORE_THRESHOLD && l_det.bbox.height > 10)// r_det.class_idx == l_det.class_idx && 
-                {
-                    // // compute the center of the bbox, to average the variance of the rectangle
-                    cv::Point l_center(lbb_tl.x + (l_det.bbox.width / 2.0), lbb_tl.y + l_det.bbox.height / 2.0);
-                    cv::Point r_center(rbb_tl.x + (r_det.bbox.width / 2.0), rbb_tl.y + r_det.bbox.height / 2.0);
-
-                    // if (abs(lbb_tl.x - rbb_tl.x) < DISP_THRESHOLD)
-                    if (abs(l_center.x - r_center.x) < DISP_THRESHOLD) //&& 
-                    {
-                        centers_l.push_back(l_center);
-                        centers_r.push_back(r_center);
-
-                        // float disparity = lbb_tl.x - rbb_tl.x;
-                        float disparity = l_center.x - r_center.x;
-                        if (disparity == 0)
-                            disparity = 0.01;
-                        float depth1 = (fy_right * rect_baseline) / disparity;
-                        float depth2 = (fy_left * rect_baseline) / disparity;
-
-                        // std::cout << "Found BB correspondence\n";
-                        // std::cout << "dimension is " << l_det.bbox.height << "\n";
-                        std::cout << "class"<<l_det.class_idx << "\n";
-                        // std::cout << "left tl corner is " << lbb_tl.x << " " << lbb_tl.y << "\n";
-                        // std::cout << "right tl corner is " << rbb_tl.x << " " << rbb_tl.y << "\n";
-                        // std::cout << "left center is " << l_center.x << " " << l_center.y << "\n";
-                        // std::cout << "right center is " << r_center.x << " " << r_center.y << "\n";
-                        // std::cout << "disparity = " << disparity << " --> depth = " << depth1 << " or " << depth2 << "\n\n\n";
-
-                        // 2D img point to be reprojected in 3D
-                        // start from left centers
-                        if(l_det.class_idx == 0)
-                            sparse_pts_to_reproj_blue.push_back(cv::Point3f(l_center.x, l_center.y, disparity));
-                        if(l_det.class_idx == 1)
-                            sparse_pts_to_reproj_yellow.push_back(cv::Point3f(l_center.x, l_center.y, disparity));
-                        if(l_det.class_idx == 3)
-                            sparse_pts_to_reproj_big_orange.push_back(cv::Point3f(l_center.x, l_center.y, disparity));
-                        else
-                            sparse_pts_to_reproj_blue.push_back(cv::Point3f(l_center.x, l_center.y, disparity));
-                        // start from right centers
-                        sparse_pts_to_reproj_test.push_back(cv::Point3f(r_center.x, r_center.y, -disparity));
-                    }
-                }
-            }
-        }
-
-
-        centers_l.clear();
-        centers_r.clear();
-
-        // ******************* RESCALED Q MATRICES ****************
-        cv::Mat q_matrix = cv::Mat::zeros(4, 4, CV_32F);
-        q_matrix.at<float>(0, 0) = 1.0;
-        q_matrix.at<float>(1, 1) = 1.0;
-        q_matrix.at<float>(0, 3) = -1201.695770263672;
-        q_matrix.at<float>(1, 3) = -812.000862121582;
-        q_matrix.at<float>(2, 3) = 1609.856176264433;
-        q_matrix.at<float>(3, 2) = 8.33929566858118; 
-        q_matrix.at<float>(3, 3) = 196.2925850759278; 
-
-        cv::Mat inv_q_matrix = cv::Mat::zeros(4, 4, CV_32F);
-        inv_q_matrix.at<float>(0, 0) = 1.0;
-        inv_q_matrix.at<float>(1, 1) = 1.0;
-        inv_q_matrix.at<float>(0, 3) = -1225.234039306641;
-        inv_q_matrix.at<float>(1, 3) = -812.000862121582;
-        inv_q_matrix.at<float>(2, 3) = 1609.856176264433;
-        inv_q_matrix.at<float>(3, 2) = -8.33929566858118;
-        inv_q_matrix.at<float>(3, 3) = 196.2925850759278;
-        //*********************************************************
-
-        // get 3D points from left centers
-        std::vector<cv::Point3f> real_3D_pts_blue(sparse_pts_to_reproj_blue.size());
-        if(sparse_pts_to_reproj_blue.size() != 0)
-            cv::perspectiveTransform(sparse_pts_to_reproj_blue, real_3D_pts_blue, q_matrix);
-
-        std::vector<cv::Point3f> real_3D_pts_yellow(sparse_pts_to_reproj_yellow.size());
-        if(sparse_pts_to_reproj_yellow.size() != 0)
-            cv::perspectiveTransform(sparse_pts_to_reproj_yellow, real_3D_pts_yellow, q_matrix);
-
-        std::vector<cv::Point3f> real_3D_pts_big_orange(sparse_pts_to_reproj_big_orange.size());
-        if(sparse_pts_to_reproj_big_orange.size() != 0)
-            cv::perspectiveTransform(sparse_pts_to_reproj_big_orange, real_3D_pts_big_orange, q_matrix);
-
-
-        // same for right centers
-        std::vector<cv::Point3f> test_real_3D_pts(sparse_pts_to_reproj_test.size());
-        cv::perspectiveTransform(sparse_pts_to_reproj_test, test_real_3D_pts, inv_q_matrix);
-
-        //publish cones in camera frame: x: direction of car, y: to right z: up
-        eufs_msgs::msg::ConeWithCovariance cone_pose_msg;
-        eufs_msgs::msg::ConeArrayWithCovariance cone_pose_array_msg;
-        auto now_time = this->get_clock()->now();
-        for (int i = 0; i < real_3D_pts_blue.size(); i++)
-        {
-            cone_pose_msg.point.x = real_3D_pts_blue[i].z;
-            cone_pose_msg.point.y = real_3D_pts_blue[i].x;
-            cone_pose_msg.point.z = real_3D_pts_blue[i].y;
-            cone_pose_array_msg.blue_cones.push_back(cone_pose_msg);
-        }
-
-        for (int i = 0; i < real_3D_pts_yellow.size(); i++)
-        {
-            cone_pose_msg.point.x = real_3D_pts_yellow[i].z;
-            cone_pose_msg.point.y = real_3D_pts_yellow[i].x;
-            cone_pose_msg.point.z = real_3D_pts_yellow[i].y;
-            cone_pose_array_msg.yellow_cones.push_back(cone_pose_msg);
-        }
-
-        for (int i = 0; i < real_3D_pts_big_orange.size(); i++)
-        {
-            cone_pose_msg.point.x = real_3D_pts_big_orange[i].z;
-            cone_pose_msg.point.y = real_3D_pts_big_orange[i].x;
-            cone_pose_msg.point.z = real_3D_pts_big_orange[i].y;
-            cone_pose_array_msg.big_orange_cones.push_back(cone_pose_msg);
-        }
-
-
-        cone_pose_array_msg.header.stamp = now_time;
-        cone_pose_array_msg.header.frame_id = "base_footprint";
-        cone_pub->publish(cone_pose_array_msg);
-            
-        // reproject
-        // cv::Mat left_cam_mat = GetCameraMat(fx_left, fy_left, cx_left, cy_left);
-        // cv::Mat right_cam_mat = GetCameraMat(fx_right, fy_right, cx_right, cy_right);
-
-        // std::vector<cv::Point2f> left_img_points, right_img_points, test_left_img_points, test_right_img_points;
-        // cv::Mat rvec, inv_rvec;
-
-        // // convert rotation matrix to r_vec
-        // cv::Rodrigues(GetRotMat(), rvec);
-
-        // // same for right centers
-        // cv::Rodrigues(GetRotMat().inv(), inv_rvec);
-
-        // // project into the left image plane
-        // // no transform because we are in left camera frame
-        // cv::projectPoints(real_3D_pts, zero_tvec, zero_tvec, left_cam_mat, zero_dist_coeffs, left_img_points);
-        // cv::projectPoints(real_3D_pts, rvec, tvec, right_cam_mat, zero_dist_coeffs, right_img_points); 
-
-        // // same for right centers
-        // cv::projectPoints(test_real_3D_pts, inv_rvec, -tvec, left_cam_mat, zero_dist_coeffs, test_left_img_points); 
-        // cv::projectPoints(test_real_3D_pts, zero_tvec, zero_tvec, right_cam_mat, zero_dist_coeffs, test_right_img_points);
-
-        // // draw the projected points to compare with the BB centers
-        // for (int j = 0; j < left_img_points.size(); j++)
-        // {
-        //     // std::cout << "GREEN: reprojection into left image (from left centers) ** 2x focal ** " << left_img_points[j].x << " " << left_img_points[j].y << "\n";
-        //     // std::cout << "GREEN: reprojection into right image (from left centers) ** 2x focal ** " << right_img_points[j].x << " " << right_img_points[j].y << "\n";
-        //     cv::circle(left_img_rgb, left_img_points[j], 1, cv::Scalar(0, 255, 0), 4);
-        //     cv::circle(right_img_rgb, right_img_points[j], 1, cv::Scalar(0, 255, 0), 4);
-
-        //     // std::cout << "RED: reprojection into left image (from right centers) ** 2x focal ** " << test_left_img_points[j].x << " " << test_left_img_points[j].y << "\n";
-        //     // std::cout << "RED: reprojection into right image (from right centers) ** 2x focal ** " << test_right_img_points[j].x << " " << test_right_img_points[j].y << "\n\n";
-        //     cv::circle(left_img_rgb, test_left_img_points[j], 1, cv::Scalar(0, 0, 255), 4);
-        //     cv::circle(right_img_rgb, test_right_img_points[j], 1, cv::Scalar(0, 0, 255), 4);
-        // }
-
-        // cv::namedWindow("match", cv::WINDOW_NORMAL);
-        // cv::Mat match_img;
-        // cv::hconcat(left_img_rgb, right_img_rgb, match_img);
-
-        // resize(match_img, match_img, cv::Size(0, 0), 0.5, 0.5, cv::INTER_CUBIC); // double scale
-
-        // cv::imshow("match", match_img);
-        // cv::waitKey();
-    }
-    
-
-
-    /*
+    /**
      * Parse input parameters, load labels and weight for the model and set confidence and IOU thresholds.
      */
     void ModelSetup()
     {
-        cxxopts::Options parser(input_argv[0], "A LibTorch implementation of the yolov5");
+        cxxopts::Options parser(input_argv[0], "A LibTorch inference implementation of the yolov5");
         // TODO: add other args
-        parser.allow_unrecognised_options().add_options()("weights", "cone_detection.torchscript.pt path", cxxopts::value<std::string>())("source", "source", cxxopts::value<std::string>())("conf-thres", "object confidence threshold", cxxopts::value<float>()->default_value("0.4"))("iou-thres", "IOU threshold for NMS", cxxopts::value<float>()->default_value("0.5"))("gpu", "Enable cuda device or cpu", cxxopts::value<bool>()->default_value("false"))("view-img", "display results", cxxopts::value<bool>()->default_value("false"))("h,help", "Print usage");
+        parser.allow_unrecognised_options().add_options()("weights", "model.torchscript.pt path", cxxopts::value<std::string>())("source", "source", cxxopts::value<std::string>())("conf-thres", "object confidence threshold", cxxopts::value<float>()->default_value("0.4"))("iou-thres", "IOU threshold for NMS", cxxopts::value<float>()->default_value("0.5"))("gpu", "Enable cuda device or cpu", cxxopts::value<bool>()->default_value("false"))("view-img", "display results", cxxopts::value<bool>()->default_value("false"))("h,help", "Print usage");
 
         cxxopts::ParseResult opt = parser.parse(input_argc, input_argv);
 
@@ -382,7 +717,7 @@ private:
         bool is_gpu = opt["gpu"].as<bool>();
 
         // set device type - CPU/GPU
-        if (torch::cuda::is_available())
+        if (torch::cuda::is_available() && is_gpu)
         {
             device_type = torch::kCUDA;
             std::cout << "Cuda is available" << std::endl;
@@ -407,11 +742,10 @@ private:
         // set up threshold
         conf_thres = opt["conf-thres"].as<float>();
         iou_thres = opt["iou-thres"].as<float>();
-        std::cout<<"Setting up model finished \n";
     }
 
     /**
-     * Load the labels of the classes used by the model.depth
+     * Load the labels of the classes used by the model.
      * @param path The path to the labels' file.
      * @return A vector containing the labels.
      */
@@ -475,6 +809,66 @@ private:
         return rot_mat;
     }
 
+    /**
+     * TODO:
+     */
+    void Demo(std::string direction,
+              cv::Mat &img,
+              const std::vector<std::vector<Detection>> &detections,
+              const std::vector<std::string> &class_names,
+              bool label = true)
+    {
+
+        int i = 0;
+        if (!detections.empty())
+        {
+            for (const auto &detection : detections[0])
+            {
+                i++;
+                const auto &box = detection.bbox;
+                float score = detection.score;
+                int class_idx = detection.class_idx;
+
+                // in this way, draw all the detection boxes, independently from the confidence score
+                cv::rectangle(img, box, cv::Scalar(0, 0, 255), 2);
+
+                if (label)
+                {
+                    std::stringstream ss;
+                    ss << std::fixed << std::setprecision(2) << score;
+                    std::string s = class_names[class_idx] + " " + ss.str();
+
+                    auto font_face = cv::FONT_HERSHEY_DUPLEX;
+                    auto font_scale = 1.0;
+                    int thickness = 1;
+                    int baseline = 0;
+                    auto s_size = cv::getTextSize(s, font_face, font_scale, thickness, &baseline);
+
+                    // draw bounding box only if the confidence is high enough
+                    // if (std::stof("" + ss.str()) > SCORE_THRESHOLD)
+                    // {
+                    //     cv::rectangle(img, box, cv::Scalar(0, 0, 255), 2);
+                    //     // cv::rectangle(img,
+                    //     //               cv::Point(box.tl().x, box.tl().y - s_size.height - 5),
+                    //     //               cv::Point(box.tl().x + s_size.width, box.tl().y),
+                    //     //               cv::Scalar(0, 0, 255), -1);
+                    //     // cv::putText(img, s, cv::Point(box.tl().x, box.tl().y - 5),
+                    //     //             font_face, font_scale, cv::Scalar(255, 255, 255), thickness);
+                    // }
+                }
+            }
+        }
+
+        // cv::namedWindow("Result", cv::WINDOW_AUTOSIZE);
+        if (direction == "left")
+        {
+            cv::imshow("left", img);
+        }
+        else
+        {
+            cv::imshow("right", img);
+        }
+    }
 };
 
 int main(int argc, const char *argv[])

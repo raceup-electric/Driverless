@@ -3,7 +3,7 @@ project(graph_based_slam)
 
 set(CMAKE_BUILD_TYPE "RELEASE")
 
-LIST(APPEND CMAKE_PREFIX_PATH "/home/raceupdv/dv_libs/libtorch-cxx11-abi-shared-with-deps-1.13.0+cu117/libtorch/")
+#LIST(APPEND CMAKE_PREFIX_PATH "/home/navid/libtorch/share/cmake/Torch")
 
 
 # suppress confusing developers warning
@@ -31,9 +31,8 @@ endif()
 
 #---------------------
 #add_subdirectory(DeepNetPorting) #add this on target_link_libraries of the executable
-#include_directories("/home/navid/eufs_ws/slam_module/src/graph_based_slam/DeepNetPorting/build/")
-#set(yolo_LIB_DIR "/home/raceupdv/driverless_ws/src/graph_based_slam/DeepNetPorting/build/")
-include_directories("/home/raceupdv/driverless_ws/src/graph_based_slam/DeepNetPorting/include/")
+#set(yolo_LIB_DIR "~/Documenti/thesis/FSD_SLAM_navigation/eufs_sim_folder/src/slam_module/src/graph_based_slam/DeepNetPorting/include")
+#include_directories("/home/navid/eufs_ws/slam_module/src/graph_based_slam/DeepNetPorting/include/")
 #---------------------
 
 
@@ -52,7 +51,7 @@ include_directories(
 
 )
 
-
+#SET(g2o_root /home/navid/g2o/)
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
@@ -63,7 +62,6 @@ find_package(eufs_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
-find_package(sensor_msgs REQUIRED)
 #find_package(g2o REQUIRED)
 find_package(g2o REQUIRED COMPONENTS
 g2o::core
@@ -79,32 +77,32 @@ find_package(tf2_geometry_msgs REQUIRED)
 find_package(tf2_eigen REQUIRED)
 find_package(pcl_ros REQUIRED)
 find_package(PCL 1.3 REQUIRED COMPONENTS common io)
-find_package(OpenCV REQUIRED)
+#find_package(OpenCV REQUIRED)
 find_package(geodesy REQUIRED)
 find_package(geographic_msgs REQUIRED)
 find_package(can_msgs REQUIRED)
-find_package(Torch REQUIRED)
-find_package(CUDA REQUIRED)
-find_package(bumblebee2_ros_driver REQUIRED)
+# find_package(Torch REQUIRED)
+# find_package(CUDA REQUIRED)
+#find_package(bumblebee2_ros_driver REQUIRED)
 find_package(ackermann_msgs REQUIRED)
 find_package(kvaser_reader_driver REQUIRED)
-find_package(graph_based_slam REQUIRED)
+#find_package(graph_based_slam REQUIRED)
 find_package(builtin_interfaces)
 
 
 #-----------------------------------
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
-set(TensorRT_DIR "/home/raceupdv/Downloads/TensorRT-8.5.1.7")
-#find_package(TensorRT REQUIRED)
-#find_package(torchtrt REQUIRED)
-set(TorchTensorRT_INCLUDE_DIR "/home/raceupdv/dv_libs/torch_tensorrt/include")
-set(TorchTensorRT_LIBS "/home/raceupdv/dv_libs/torch_tensorrt/lib/libtorchtrt.so;/home/raceupdv/dv_libs/torch_tensorrt/lib/libtorchtrt_plugins.so;/home/raceupdv/dv_libs/torch_tensorrt/lib/libtorchtrt_runtime.so")
+# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
+# set(TensorRT_DIR "/usr/src/tensorrt")
+# #find_package(TensorRT REQUIRED)
+# #find_package(torchtrt REQUIRED)
+# set(TorchTensorRT_INCLUDE_DIR "~/torch_tensorrt/include")
+# set(TorchTensorRT_LIBS "~/torch_tensorrt/lib/libtorchtrt.so;~/torch_tensorrt/lib/libtorchtrt_plugins.so;~/torch_tensorrt/lib/libtorchtrt_runtime.so")
 #-------------------------------
 
-find_library(RT_LIB rt REQUIRED)
-find_library(yolo_lib REQUIRED)
+# find_library(RT_LIB rt REQUIRED)
+# find_library(yolo_lib REQUIRED)
 
 
 include_directories(${PCL_INCLUDE_DIRS})
@@ -136,8 +134,8 @@ add_library(utilities SHARED src/utilities.cpp)
 ament_target_dependencies(utilities rclcpp)
 
 # add_library(can_functions SHARED src/can_functions.cpp)
-# ament_target_dependencies(can_functions rclcpp)
-# target_link_libraries(can_functions g2o::core g2o::types_slam2d node_data)
+#ament_target_dependencies(can_functions rclcpp)
+#target_link_libraries(can_functions g2o::core g2o::types_slam2d node_data)
 
 
 # add executables
@@ -147,17 +145,13 @@ add_executable(graph_SLAM src/GraphSLAM.cpp)
 ament_target_dependencies(graph_SLAM rclcpp rclcpp_components std_msgs eufs_msgs nav_msgs visualization_msgs geometry_msgs tf2 tf2_ros tf2_msgs tf2_sensor_msgs tf2_geometry_msgs ackermann_msgs)
 target_link_libraries(graph_SLAM graph_handling node_data cone_data pose_data ks_kinematics utilities ${G2O_SOLVER_CSPARSE})
 
-add_executable(graph_SLAM_Real src/GraphSLAMReal.cpp)
-ament_target_dependencies(graph_SLAM_Real rclcpp rclcpp_components std_msgs eufs_msgs nav_msgs visualization_msgs geometry_msgs tf2 tf2_ros tf2_msgs tf2_sensor_msgs tf2_geometry_msgs ackermann_msgs OpenCV)
-target_link_libraries(graph_SLAM_Real graph_handling node_data cone_data pose_data ks_kinematics utilities ${G2O_SOLVER_CSPARSE})
-
 add_executable(lidar_detection src/lidar_detection.cpp)
 ament_target_dependencies(lidar_detection rclcpp std_msgs nav_msgs eufs_msgs geometry_msgs visualization_msgs pcl_ros tf2 tf2_ros tf2_msgs tf2_sensor_msgs tf2_geometry_msgs)
 target_link_libraries(lidar_detection ${PCL_LIBRARIES})
 
-add_executable(deskew_lidar src/deskew_lidar.cpp)
-ament_target_dependencies(deskew_lidar rclcpp std_msgs sensor_msgs geometry_msgs nav_msgs pcl_ros tf2 tf2_ros tf2_eigen tf2_sensor_msgs tf2_geometry_msgs OpenCV)
-target_link_libraries(deskew_lidar ${PCL_LIBRARIES})
+#add_executable(deskew_lidar src/deskew_lidar.cpp)
+#ament_target_dependencies(deskew_lidar rclcpp std_msgs sensor_msgs geometry_msgs nav_msgs pcl_ros tf2 tf2_ros tf2_eigen tf2_sensor_msgs tf2_geometry_msgs OpenCV)
+#target_link_libraries(deskew_lidar ${PCL_LIBRARIES})
 
 add_executable(graph_visualizer src/GraphVisualizer.cpp)
 ament_target_dependencies(graph_visualizer rclcpp std_msgs visualization_msgs)
@@ -169,8 +163,8 @@ add_executable(incremental_graph_SLAM src/incrementalGraphSLAM.cpp)
 ament_target_dependencies(incremental_graph_SLAM rclcpp rclcpp_components std_msgs eufs_msgs nav_msgs visualization_msgs geometry_msgs tf2 tf2_ros tf2_msgs tf2_sensor_msgs tf2_geometry_msgs ackermann_msgs)
 target_link_libraries(incremental_graph_SLAM graph_handling node_data cone_data pose_data ks_kinematics utilities ${G2O_SOLVER_CSPARSE} )
 
-add_executable(odometry_estimation src/odometry_estimation.cpp)
-ament_target_dependencies(odometry_estimation rclcpp rclcpp_components std_msgs nav_msgs tf2 tf2_ros tf2_msgs tf2_sensor_msgs tf2_geometry_msgs sensor_msgs eufs_msgs kvaser_reader_driver graph_based_slam eufs_msgs builtin_interfaces visualization_msgs OpenCV)
+#add_executable(odometry_estimation src/odometry_estimation.cpp)
+#ament_target_dependencies(odometry_estimation rclcpp std_msgs tf2_eigen sensor_msgs kvaser_reader_driver graph_based_slam eufs_msgs builtin_interfaces visualization_msgs)
 
 # add_executable(kvaser_reader src/kvaser_reader.cpp)
 # ament_target_dependencies(kvaser_reader rclcpp rclcpp_components can_msgs std_msgs)
@@ -181,35 +175,32 @@ ament_target_dependencies(odometry_estimation rclcpp rclcpp_components std_msgs 
 # ament_target_dependencies(kvaser_parser rclcpp std_msgs can_msgs)
 
 ####################################################################################
-add_executable(stereo_matching src/opencv_stereo_matching.cpp)
-ament_target_dependencies(stereo_matching rclcpp std_msgs OpenCV)
+# add_executable(stereo_matching src/opencv_stereo_matching.cpp)
+# ament_target_dependencies(stereo_matching rclcpp std_msgs OpenCV)
 ####################################################################################
 
-#online cone detection
-add_executable(yolo_detector src/yolo_cones_detection.cpp)
-target_include_directories(yolo_detector PUBLIC 
-/home/raceupdv/driverless_ws/src/graph_based_slam/DeepNetPorting/build/
-${TorchTensorRT_INCLUDE_DIR})
-target_link_libraries(yolo_detector /home/raceupdv/dv_libs/torch_tensorrt/lib/libtorchtrt_runtime.so)
-target_link_libraries(yolo_detector /home/raceupdv/driverless_ws/src/graph_based_slam/DeepNetPorting/build/libyolo_lib.so)
-target_link_libraries(yolo_detector ${TORCH_LIBRARIES})
-message(TORCH_LIBRARIES="${CMAKE_CXX_STANDARD}")
-ament_target_dependencies(yolo_detector rclcpp std_msgs geometry_msgs eufs_msgs OpenCV sensor_msgs bumblebee2_ros_driver Torch) 
-
-#offline cone detection in case of limited processing resources
-# add_executable(yolo_detector_offline src/yolo_cones_detection_offline.cpp)
-# target_include_directories(yolo_detector_offline PUBLIC 
-# /home/navid/eufs_ws/slam_module/src/graph_based_slam/DeepNetPorting/build/
+# add_executable(yolo_detector src/yolo_cones_detection.cpp)
+# target_include_directories(yolo_detector PUBLIC 
 # ${TorchTensorRT_INCLUDE_DIR})
-# target_link_libraries(yolo_detector_offline /home/navid/eufs_ws/lib/torch_tensorrt/lib/libtorchtrt_runtime.so)
-# target_link_libraries(yolo_detector_offline /home/navid/eufs_ws/slam_module/src/graph_based_slam/DeepNetPorting/build/libyolo_lib.so)
-# target_link_libraries(yolo_detector_offline ${TORCH_LIBRARIES})
-# message(TORCH_LIBRARIES="${CMAKE_CXX_STANDARD}")
-# ament_target_dependencies(yolo_detector_offline rclcpp std_msgs geometry_msgs eufs_msgs OpenCV bumblebee2_ros_driver Torch) 
+# target_link_libraries(yolo_detector ${TORCH_LIBRARIES})
+# target_link_libraries(yolo_detector ~/torch_tensorrt/lib/libtorchtrt_runtime.so)
+# target_link_libraries(yolo_detector ~/libtorch/lib/libtorch_cuda.so)
+# target_link_libraries(yolo_detector 
+#  ~/Documenti/thesis/FSD_SLAM_navigation/eufs_sim_folder/src/slam_module/src/graph_based_slam/DeepNetPorting/build/libyolo_lib.so
+# ~/libtorch/lib/libtorch.so
+# ~/libtorch/lib/libtorch_cpu.so
+# #~/libtorch/lib/libtorch_cuda.so
+# ~/libtorch/lib/libtorch_global_deps.so
+# ~/libtorch/lib/libbackend_with_compiler.so
+# ~/libtorch/lib/libc10.so
+# ~/libtorch/lib/libc10_cuda.so
+# )
+# ament_target_dependencies(yolo_detector rclcpp std_msgs OpenCV Torch bumblebee2_ros_driver)
 
 
-add_executable(extract_gt_cones src/gt_cones.cpp)
-ament_target_dependencies(extract_gt_cones rclcpp OpenCV)
+
+#add_executable(extract_gt_cones src/gt_cones.cpp)
+#ament_target_dependencies(extract_gt_cones rclcpp OpenCV)
 
 
 ament_export_libraries(graph_handling)
@@ -237,18 +228,16 @@ install(TARGETS
 install(TARGETS
   graph_SLAM
   incremental_graph_SLAM
-  graph_SLAM_Real
   lidar_detection
-  deskew_lidar
+  #deskew_lidar
   convert_GPS
   graph_visualizer
   # kvaser_reader
   # kvaser_parser
-  yolo_detector
-  #yolo_detector_offline
-  stereo_matching
-  extract_gt_cones
-  odometry_estimation
+  # yolo_detector
+  # stereo_matching
+  #extract_gt_cones
+  #odometry_estimation
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -286,9 +275,6 @@ rosidl_target_interfaces(graph_visualizer
 rosidl_target_interfaces(graph_SLAM
   ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
-rosidl_target_interfaces(graph_SLAM_Real
- ${PROJECT_NAME} "rosidl_typesupport_cpp")
-
 rosidl_target_interfaces(convert_GPS
   ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
@@ -302,11 +288,11 @@ rosidl_target_interfaces(incremental_graph_SLAM
 #   ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
 
-#check if this is correct
-target_include_directories(graph_SLAM
-  PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>)
+# check if this is correct
+# target_include_directories(graph_SLAM
+#   PUBLIC
+#     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+#     $<INSTALL_INTERFACE:include>)
 
 
 if(BUILD_TESTING)
