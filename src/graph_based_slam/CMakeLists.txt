@@ -3,7 +3,7 @@ project(graph_based_slam)
 
 set(CMAKE_BUILD_TYPE "RELEASE")
 
-LIST(APPEND CMAKE_PREFIX_PATH "/home/raceupdv/dv_libs/libtorch-cxx11-abi-shared-with-deps-1.13.0+cu117/libtorch/")
+LIST(APPEND CMAKE_PREFIX_PATH "/home/fed/Driverless/libtorch")
 
 
 # suppress confusing developers warning
@@ -96,11 +96,11 @@ find_package(builtin_interfaces)
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
-set(TensorRT_DIR "/home/raceupdv/Downloads/TensorRT-8.5.1.7")
+#set(TensorRT_DIR "/home/raceupdv/Downloads/TensorRT-8.5.1.7")
 #find_package(TensorRT REQUIRED)
 #find_package(torchtrt REQUIRED)
-set(TorchTensorRT_INCLUDE_DIR "/home/raceupdv/dv_libs/torch_tensorrt/include")
-set(TorchTensorRT_LIBS "/home/raceupdv/dv_libs/torch_tensorrt/lib/libtorchtrt.so;/home/raceupdv/dv_libs/torch_tensorrt/lib/libtorchtrt_plugins.so;/home/raceupdv/dv_libs/torch_tensorrt/lib/libtorchtrt_runtime.so")
+#set(TorchTensorRT_INCLUDE_DIR "/home/raceupdv/dv_libs/torch_tensorrt/include")
+#set(TorchTensorRT_LIBS "/home/raceupdv/dv_libs/torch_tensorrt/lib/libtorchtrt.so;/home/raceupdv/dv_libs/torch_tensorrt/lib/libtorchtrt_plugins.so;/home/raceupdv/dv_libs/torch_tensorrt/lib/libtorchtrt_runtime.so")
 #-------------------------------
 
 find_library(RT_LIB rt REQUIRED)

@@ -27,6 +27,7 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
 
 find_package( OpenCV REQUIRED )
+# find_package(cv_bridge REQUIRED)
 find_library( DC1394_LIB dc1394 REQUIRED )
 find_library( RT_LIB rt REQUIRED )
 
