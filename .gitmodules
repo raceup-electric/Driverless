@@ -1,0 +1,6 @@
+[submodule "ORB_SLAM3_ROS2"]
+	path = ORB_SLAM3_ROS2
+	url = https://github.com/zang09/ORB_SLAM3_ROS2.git
+[submodule "src/ORB_SLAM3_ROS2"]
+	path = src/ORB_SLAM3_ROS2
+	url = https://github.com/zang09/ORB_SLAM3_ROS2.git
