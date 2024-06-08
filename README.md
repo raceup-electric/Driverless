@@ -7,6 +7,7 @@ Powered by:
 
 ## ORBSLAM BRANCH
 In this branch it is possible to run both orbslam with blackfly (flir) cameras and for the bumblebee.
+Note: orbslam has compile errors with OpenCV 4.9, the recomended version is Opencv 4.2
 
 ## BUILD
 
@@ -17,3 +18,5 @@ colcon build --packages-skip graph_based_slam
 follow this guide to make it work in your workspace:
 
 https://github.com/zang09/ORB_SLAM3_ROS2?tab=readme-ov-file
+
+
